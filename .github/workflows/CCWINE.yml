@@ -1,0 +1,86 @@
+name: Cross-Compile Wine for AMD64
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    name: Build Wine for AMD64
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            gcc-multilib \
+            g++-multilib \
+            mingw-w64 \
+            libx11-dev \
+            libfreetype6-dev \
+            libgl1-mesa-dev \
+            libgphoto2-dev \
+            libgsm1-dev \
+            libjpeg-dev \
+            libkrb5-dev \
+            libodbc1 \
+            libpcap-dev \
+            libpng-dev \
+            libsane-dev \
+            libv4l-dev \
+            libxcomposite-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxi-dev \
+            libxinerama-dev \
+            libxml2-dev \
+            libxslt-dev \
+            libxrender-dev \
+            libxxf86vm-dev \
+            libvulkan-dev \
+            libpulse-dev \
+            libudev-dev \
+            libdbus-1-dev \
+            liblcms2-dev \
+            libosmesa6-dev \
+            gettext \
+            git \
+            autoconf \
+            automake \
+            bison \
+            flex \
+            libtool \
+            make \
+            cmake \
+            ninja-build \
+            python3
+
+      - name: Configure Wine for AMD64
+        run: |
+          mkdir -p wine-build
+          cd wine-build
+          ../configure --enable-win64
+
+      - name: Compile Wine
+        run: |
+          cd wine-build
+          make -j$(nproc)
+
+      - name: Archive Wine binaries
+        run: |
+          cd wine-build
+          tar -czf wine-amd64.tar.gz .
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: wine-amd64-binaries
+          path: wine-build/wine-amd64.tar.gz
