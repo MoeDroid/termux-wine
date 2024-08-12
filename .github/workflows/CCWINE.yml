@@ -22,7 +22,6 @@ jobs:
             g++-multilib \
             mingw-w64 \
             libx11-dev \
-            libgnutls30t64 \
             libgnutls28-dev \
             libfreetype6-dev \
             libgl1-mesa-dev \
