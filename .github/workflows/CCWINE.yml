@@ -1,12 +1,9 @@
 name: Cross-Compile Wine for AMD64
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    branches:
-      - main
+  schedule:
+    - cron:  '0 0 */3 * *'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -67,7 +64,7 @@ jobs:
         run: |
           mkdir -p wine-build
           cd wine-build
-          ../configure --enable-win64
+          ../configure --enable-win64 enable_wineandroid_drv=no exec_prefix=/data/data/com.termux/files/usr --with-wine-tools=$TERMUX_PKG_HOSTBUILD_DIR --enable-nls --disable-tests --without-alsa--without-capi --without-coreaudio --without-cups --without-dbus --with-fontconfig --with-freetype --without-gettext --with-gettextpo=no --without-gphoto --with-gnutls --without-gstreamer --without-inotify --with-krb5 --with-mingw --without-netapi --without-opencl --with-opengl --with-osmesa --without-oss --without-pcap --with-pthread --with-pulse --without-sane --with-sdl --without-udev --without-unwind --without-usb --without-v4l2 --with-vulkan --with-xcomposite --with-xcursor --with-xfixes --without-xinerama --with-xinput --with-xinput2 --with-xrandr --with-xrender --without-xshape --without-xshm --without-xxf86vm --enable-archs=i386,arm,aarch64
 
       - name: Compile Wine
         run: |
