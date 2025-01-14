@@ -728,12 +728,6 @@ static void lnxev_device_destroy(struct unix_device *iface)
 
 static NTSTATUS lnxev_device_start(struct unix_device *iface)
 {
-    struct lnxev_device *impl = lnxev_impl_from_unix_device(iface);
-    NTSTATUS status;
-
-    if ((status = build_report_descriptor(iface, impl->base.udev_device)))
-        return status;
-
     pthread_mutex_lock(&udev_cs);
     start_polling_device(iface);
     pthread_mutex_unlock(&udev_cs);
@@ -1138,14 +1132,14 @@ static const struct hid_device_vtbl lnxev_device_vtbl =
 };
 #endif /* HAS_PROPER_INPUT_HEADER */
 
-static void get_device_subsystem_info(struct udev_device *dev, char const *subsystem, struct device_desc *desc,
-                                      int *bus)
+static void get_device_subsystem_info(struct udev_device *dev, const char *subsystem, const char *devtype,
+                                      struct device_desc *desc, int *bus)
 {
     struct udev_device *parent = NULL;
     const char *ptr, *next, *tmp;
     char buffer[MAX_PATH];
 
-    if (!(parent = udev_device_get_parent_with_subsystem_devtype(dev, subsystem, NULL))) return;
+    if (!(parent = udev_device_get_parent_with_subsystem_devtype(dev, subsystem, devtype))) return;
 
     if ((next = udev_device_get_sysattr_value(parent, "uevent")))
     {
@@ -1177,25 +1171,32 @@ static void get_device_subsystem_info(struct udev_device *dev, char const *subsy
                 if (*bus || desc->vid || desc->pid) continue;
                 sscanf(ptr, "HID_ID=%x:%x:%x\n", bus, &desc->vid, &desc->pid);
             }
-            if (!strncmp(ptr, "PRODUCT=", 8) && *bus != BUS_BLUETOOTH)
+
+            if (!strcmp(subsystem, "input"))
             {
-                if (desc->version) continue;
-                if (!strcmp(subsystem, "usb"))
-                    sscanf(ptr, "PRODUCT=%x/%x/%x\n", &desc->vid, &desc->pid, &desc->version);
-                else
+                if (!strncmp(ptr, "PRODUCT=", 8))
                     sscanf(ptr, "PRODUCT=%x/%x/%x/%x\n", bus, &desc->vid, &desc->pid, &desc->version);
+            }
+
+            if (!strcmp(subsystem, "usb") && *bus != BUS_BLUETOOTH)
+            {
+                if (!strncmp(ptr, "PRODUCT=", 8))
+                    sscanf(ptr, "PRODUCT=%x/%x/%x\n", &desc->vid, &desc->pid, &desc->version);
             }
         }
     }
 
-    if (!desc->manufacturer[0] && (tmp = udev_device_get_sysattr_value(dev, "manufacturer")))
-        ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->manufacturer, ARRAY_SIZE(desc->manufacturer));
+    if (!strcmp(subsystem, "usb") && *bus != BUS_BLUETOOTH)
+    {
+        if ((tmp = udev_device_get_sysattr_value(parent, "manufacturer")))
+            ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->manufacturer, ARRAY_SIZE(desc->manufacturer));
 
-    if (!desc->product[0] && (tmp = udev_device_get_sysattr_value(dev, "product")))
-        ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->product, ARRAY_SIZE(desc->product));
+        if ((tmp = udev_device_get_sysattr_value(parent, "product")))
+            ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->product, ARRAY_SIZE(desc->product));
 
-    if (!desc->serialnumber[0] && (tmp = udev_device_get_sysattr_value(dev, "serial")))
-        ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->serialnumber, ARRAY_SIZE(desc->serialnumber));
+        if ((tmp = udev_device_get_sysattr_value(parent, "serial")))
+            ntdll_umbstowcs(tmp, strlen(tmp) + 1, desc->serialnumber, ARRAY_SIZE(desc->serialnumber));
+    }
 }
 
 static void udev_add_device(struct udev_device *dev, int fd)
@@ -1223,9 +1224,9 @@ static void udev_add_device(struct udev_device *dev, int fd)
 
     TRACE("udev %s syspath %s\n", debugstr_a(devnode), udev_device_get_syspath(dev));
 
-    get_device_subsystem_info(dev, "hid", &desc, &bus);
-    get_device_subsystem_info(dev, "input", &desc, &bus);
-    get_device_subsystem_info(dev, "usb", &desc, &bus);
+    get_device_subsystem_info(dev, "hid", NULL, &desc, &bus);
+    get_device_subsystem_info(dev, "input", NULL, &desc, &bus);
+    get_device_subsystem_info(dev, "usb", "usb_device", &desc, &bus);
     if (bus == BUS_BLUETOOTH) desc.is_bluetooth = TRUE;
 
     subsystem = udev_device_get_subsystem(dev);
@@ -1247,7 +1248,6 @@ static void udev_add_device(struct udev_device *dev, int fd)
 #ifdef HAS_PROPER_INPUT_HEADER
     else if (!strcmp(subsystem, "input"))
     {
-        const USAGE_AND_PAGE device_usage = *what_am_I(dev, fd);
         static const WCHAR evdev[] = {'e','v','d','e','v',0};
         struct input_id device_id = {0};
         char buffer[MAX_PATH];
@@ -1268,8 +1268,6 @@ static void udev_add_device(struct udev_device *dev, int fd)
 
         if (!desc.serialnumber[0] && ioctl(fd, EVIOCGUNIQ(sizeof(buffer)), buffer) >= 0)
             ntdll_umbstowcs(buffer, strlen(buffer) + 1, desc.serialnumber, ARRAY_SIZE(desc.serialnumber));
-
-        desc.usages = device_usage;
     }
 #endif
 
@@ -1313,6 +1311,13 @@ static void udev_add_device(struct udev_device *dev, int fd)
         impl->udev_device = udev_device_ref(dev);
         strcpy(impl->devnode, devnode);
         impl->device_fd = fd;
+
+        if (build_report_descriptor(&impl->unix_device, impl->udev_device))
+        {
+            list_remove(&impl->unix_device.entry);
+            impl->unix_device.vtbl->destroy(&impl->unix_device);
+            return;
+        }
 
         bus_event_queue_device_created(&event_queue, &impl->unix_device, &desc);
     }

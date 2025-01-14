@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: https://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2023-12-18 22:35+0900\n"
+"PO-Revision-Date: 2024-12-15 22:00+0900\n"
 "Last-Translator: Akihiro Sagawa <sagawa.aki@gmail.com>\n"
 "Language-Team: Japanese\n"
 "Language: ja\n"
@@ -165,16 +165,17 @@ msgid ""
 "install it for you.\n"
 "\n"
 "Note: it is recommended to use your distribution's packages instead. See <a "
-"href=\"https://wiki.winehq.org/Gecko\">https://wiki.winehq.org/Gecko</a> for "
-"details."
+"href=\"https://gitlab.winehq.org/wine/wine/-/wikis/Gecko\">https://gitlab."
+"winehq.org/wine/wine/-/wikis/Gecko</a> for details."
 msgstr ""
 "Gecko パッケージを見つけられませんでした。このパッケージは HTML を組み込んだ"
 "アプリケーションが正しく動作するために必要です。Wine で当該パッケージを自動的"
 "にダウンロードし、インストールすることができます。\n"
 "\n"
 "注意: 代わりにディストリビューションのパッケージを利用することをおすすめしま"
-"す。詳しくは、<a href=\"https://wiki.winehq.org/Gecko\">https://wiki.winehq."
-"org/Gecko</a> を参照ください。"
+"す。詳しくは、<a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/"
+"Gecko\">https://gitlab.winehq.org/wine/wine/-/wikis/Gecko</a> を参照くださ"
+"い。"
 
 #: dlls/appwiz.cpl/appwiz.rc:110 dlls/appwiz.cpl/appwiz.rc:125
 msgid "&Install"
@@ -234,16 +235,17 @@ msgid ""
 "it for you.\n"
 "\n"
 "Note: it is recommended to use your distribution's packages instead. See <a "
-"href=\"https://wiki.winehq.org/Mono\">https://wiki.winehq.org/Mono</a> for "
-"details."
+"href=\"https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono\">https://"
+"gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono</a> for details."
 msgstr ""
 "wine-mono パッケージを見つけられませんでした。このパッケージは .NET アプリ"
 "ケーションが正しく動作するために必要です。Wine で当該パッケージを自動的にダウ"
 "ンロードし、インストールすることができます。\n"
 "\n"
 "注意: 代わりにディストリビューションのパッケージを利用することをおすすめしま"
-"す。詳しくは、<a href=\"https://wiki.winehq.org/Mono\">https://wiki.winehq."
-"org/Mono</a> を参照ください。"
+"す。詳しくは、<a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/Wine-"
+"Mono\">https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono</a> を参照くださ"
+"い。"
 
 #: dlls/appwiz.cpl/appwiz.rc:31
 msgid "Add/Remove Programs"
@@ -409,6 +411,7 @@ msgid "Properties for %s"
 msgstr "%sのプロパティ"
 
 #: dlls/comctl32/comctl32.rc:73 dlls/comdlg32/comdlg32.rc:265
+#: dlls/desk.cpl/desk.rc:41
 msgid "&Apply"
 msgstr "適用(&A)"
 
@@ -3140,6 +3143,30 @@ msgstr "証明書を選択してください"
 msgid "Not yet implemented"
 msgstr "未実装"
 
+#: dlls/desk.cpl/desk.rc:35
+msgid "Desktop"
+msgstr "デスクトップ"
+
+#: dlls/desk.cpl/desk.rc:38
+msgid "Virtual Desktop"
+msgstr "仮想デスクトップ"
+
+#: dlls/desk.cpl/desk.rc:40 dlls/joy.cpl/joy.rc:41
+msgid "&Reset"
+msgstr "リセット(&R)"
+
+#: dlls/desk.cpl/desk.rc:42
+msgid "Emulate display mode changes (requires restart)"
+msgstr "ディスプレイ モードの変更を模倣する (再スタートが必要)"
+
+#: dlls/desk.cpl/desk.rc:29
+msgid "Display Settings"
+msgstr "ディスプレイ設定"
+
+#: dlls/desk.cpl/desk.rc:30
+msgid "Configure monitors and display devices."
+msgstr "モニターとディスプレイ デバイスを設定します。"
+
 #: dlls/dinput/dinput.rc:34
 msgid "Configure Devices"
 msgstr "デバイスの設定"
@@ -3721,59 +3748,59 @@ msgstr "ジョイスティック"
 msgid "&Disable"
 msgstr "無効化(&D)"
 
-#: dlls/joy.cpl/joy.rc:41
-msgid "&Reset"
-msgstr "リセット(&R)"
-
 #: dlls/joy.cpl/joy.rc:42
-msgid "&Enable"
-msgstr "有効化(&E)"
-
-#: dlls/joy.cpl/joy.rc:43
 msgid "&Override"
 msgstr "上書き(&O)"
 
+#: dlls/joy.cpl/joy.rc:43
+msgid "&Enable"
+msgstr "有効化(&E)"
+
 #: dlls/joy.cpl/joy.rc:44
-msgid "Connected"
-msgstr "接続済み"
+msgid "Connected (DirectInput devices)"
+msgstr "接続済み (DirectInput デバイス)"
 
 #: dlls/joy.cpl/joy.rc:46
-msgid "Connected (xinput device)"
-msgstr "接続済み (xinputデバイス)"
+msgid "Connected (XInput devices)"
+msgstr "接続済み (XInput デバイス)"
 
 #: dlls/joy.cpl/joy.rc:48
 msgid "Disabled"
 msgstr "無効"
 
-#: dlls/joy.cpl/joy.rc:50
-msgid ""
-"After disabling or enabling a device, the connected joysticks won't be "
-"updated here until you restart this applet."
-msgstr ""
-"このアプレットを再起動するまでは、デバイスを無効化または有効化したあとでも、"
-"ここにある接続済みジョイスティックの一覧は更新されません。"
+#: dlls/joy.cpl/joy.rc:51
+msgid "Advanced settings (restart prefix required to take effect)"
+msgstr "高度な設定 (有効にするにはプレフィックスの再スタートが必要)"
 
-#: dlls/joy.cpl/joy.rc:55
+#: dlls/joy.cpl/joy.rc:52
+msgid "Enable SDL"
+msgstr "SDL を有効にする"
+
+#: dlls/joy.cpl/joy.rc:53
+msgid "Disable hidraw"
+msgstr "hidraw を無効にする"
+
+#: dlls/joy.cpl/joy.rc:58
 msgid "DInput"
 msgstr "DInput"
 
-#: dlls/joy.cpl/joy.rc:59
+#: dlls/joy.cpl/joy.rc:62
 msgid "Axes"
 msgstr "軸"
 
-#: dlls/joy.cpl/joy.rc:60
+#: dlls/joy.cpl/joy.rc:63
 msgid "POVs"
 msgstr "POV"
 
-#: dlls/joy.cpl/joy.rc:61
+#: dlls/joy.cpl/joy.rc:64
 msgid "Buttons"
 msgstr "ボタン"
 
-#: dlls/joy.cpl/joy.rc:62
+#: dlls/joy.cpl/joy.rc:65
 msgid "Force Feedback Effect"
 msgstr "フォース フィードバック効果"
 
-#: dlls/joy.cpl/joy.rc:64
+#: dlls/joy.cpl/joy.rc:67
 msgid ""
 "Press any button in the controller to activate the chosen effect. The effect "
 "direction can be changed with the controller axis."
@@ -3781,27 +3808,27 @@ msgstr ""
 "選択した効果を有効化するにはコントローラーのボタンを押してください。効果の方"
 "向はコントローラーの軸で変更できます。"
 
-#: dlls/joy.cpl/joy.rc:70
+#: dlls/joy.cpl/joy.rc:73
 msgid "XInput"
 msgstr "XInput"
 
-#: dlls/joy.cpl/joy.rc:73
+#: dlls/joy.cpl/joy.rc:76
 msgid "User #0"
 msgstr "ユーザー #0"
 
-#: dlls/joy.cpl/joy.rc:74
+#: dlls/joy.cpl/joy.rc:77
 msgid "User #1"
 msgstr "ユーザー #1"
 
-#: dlls/joy.cpl/joy.rc:75
+#: dlls/joy.cpl/joy.rc:78
 msgid "User #2"
 msgstr "ユーザー #2"
 
-#: dlls/joy.cpl/joy.rc:76
+#: dlls/joy.cpl/joy.rc:79
 msgid "User #3"
 msgstr "ユーザー #3"
 
-#: dlls/joy.cpl/joy.rc:78
+#: dlls/joy.cpl/joy.rc:81
 msgid ""
 "No user detected on slot #0, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3809,7 +3836,7 @@ msgstr ""
 "スロット #0 でユーザーを検出できません。ゲームパッドが差し込まれているか、"
 "[ジョイスティック]タブでDInput用に上書きしていないか確認してください。"
 
-#: dlls/joy.cpl/joy.rc:82
+#: dlls/joy.cpl/joy.rc:85
 msgid ""
 "No user detected on slot #1, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3817,7 +3844,7 @@ msgstr ""
 "スロット #1 でユーザーを検出できません。ゲームパッドが差し込まれているか、"
 "[ジョイスティック]タブでDInput用に上書きしていないか確認してください。"
 
-#: dlls/joy.cpl/joy.rc:86
+#: dlls/joy.cpl/joy.rc:89
 msgid ""
 "No user detected on slot #2, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3825,7 +3852,7 @@ msgstr ""
 "スロット #2 でユーザーを検出できません。ゲームパッドが差し込まれているか、"
 "[ジョイスティック]タブでDInput用に上書きしていないか確認してください。"
 
-#: dlls/joy.cpl/joy.rc:90
+#: dlls/joy.cpl/joy.rc:93
 msgid ""
 "No user detected on slot #3, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3833,8 +3860,8 @@ msgstr ""
 "スロット #3 でユーザーを検出できません。ゲームパッドが差し込まれているか、"
 "[ジョイスティック]タブでDInput用に上書きしていないか確認してください。"
 
-#: dlls/joy.cpl/joy.rc:95 dlls/joy.cpl/joy.rc:96 dlls/joy.cpl/joy.rc:97
-#: dlls/joy.cpl/joy.rc:98
+#: dlls/joy.cpl/joy.rc:98 dlls/joy.cpl/joy.rc:99 dlls/joy.cpl/joy.rc:100
+#: dlls/joy.cpl/joy.rc:101
 msgid "Rumble"
 msgstr "振動"
 
@@ -3882,167 +3909,171 @@ msgstr "オブジェクトはこの操作をサポートしていません"
 msgid "Argument not optional"
 msgstr "引数は省略できません"
 
-#: dlls/jscript/jscript.rc:37
+#: dlls/jscript/jscript.rc:37 dlls/vbscript/vbscript.rc:56
+msgid "Object not a collection"
+msgstr "オブジェクトはコレクションではありません"
+
+#: dlls/jscript/jscript.rc:38
 msgid "Syntax error"
 msgstr "構文エラー"
 
-#: dlls/jscript/jscript.rc:38
+#: dlls/jscript/jscript.rc:39
 msgid "Expected ';'"
 msgstr "';'を期待していました"
 
-#: dlls/jscript/jscript.rc:39
+#: dlls/jscript/jscript.rc:40
 msgid "Expected '('"
 msgstr "'('を期待していました"
 
-#: dlls/jscript/jscript.rc:40
+#: dlls/jscript/jscript.rc:41
 msgid "Expected ')'"
 msgstr "')'を期待していました"
 
-#: dlls/jscript/jscript.rc:41
+#: dlls/jscript/jscript.rc:42
 msgid "Expected identifier"
 msgstr "識別子を期待していました"
 
-#: dlls/jscript/jscript.rc:42
+#: dlls/jscript/jscript.rc:43
 msgid "Expected '='"
 msgstr "'='を期待していました"
 
-#: dlls/jscript/jscript.rc:43
+#: dlls/jscript/jscript.rc:44
 msgid "Invalid character"
 msgstr "使用できない文字です"
 
-#: dlls/jscript/jscript.rc:44
+#: dlls/jscript/jscript.rc:45
 msgid "Unterminated string constant"
 msgstr "文字列定数が終端していません"
 
-#: dlls/jscript/jscript.rc:45
+#: dlls/jscript/jscript.rc:46
 msgid "'return' statement outside of function"
 msgstr "return 文が関数外にあります"
 
-#: dlls/jscript/jscript.rc:46
+#: dlls/jscript/jscript.rc:47
 msgid "Can't have 'break' outside of loop"
 msgstr "ループ外で break は使えません"
 
-#: dlls/jscript/jscript.rc:47
+#: dlls/jscript/jscript.rc:48
 msgid "Can't have 'continue' outside of loop"
 msgstr "ループ外で continue は使えません"
 
-#: dlls/jscript/jscript.rc:48
+#: dlls/jscript/jscript.rc:49
 msgid "Label redefined"
 msgstr "ラベルが再定義されました"
 
-#: dlls/jscript/jscript.rc:49
+#: dlls/jscript/jscript.rc:50
 msgid "Label not found"
 msgstr "ラベルが見つかりません"
 
-#: dlls/jscript/jscript.rc:50
+#: dlls/jscript/jscript.rc:51
 msgid "Expected '@end'"
 msgstr "'@end'を期待していました"
 
-#: dlls/jscript/jscript.rc:51
+#: dlls/jscript/jscript.rc:52
 msgid "Conditional compilation is turned off"
 msgstr "条件コンパイルはオフにされています"
 
-#: dlls/jscript/jscript.rc:52
+#: dlls/jscript/jscript.rc:53
 msgid "Expected '@'"
 msgstr "'@'を期待していました"
 
-#: dlls/jscript/jscript.rc:89
+#: dlls/jscript/jscript.rc:90
 msgid "Microsoft JScript compilation error"
 msgstr "Microsoft JScript コンパイル エラー"
 
-#: dlls/jscript/jscript.rc:90
+#: dlls/jscript/jscript.rc:91
 msgid "Microsoft JScript runtime error"
 msgstr "Microsoft JScript 実行時エラー"
 
-#: dlls/jscript/jscript.rc:91 dlls/vbscript/vbscript.rc:64
+#: dlls/jscript/jscript.rc:92 dlls/vbscript/vbscript.rc:64
 msgid "Unknown runtime error"
 msgstr "未知の実行時エラー"
 
-#: dlls/jscript/jscript.rc:55
+#: dlls/jscript/jscript.rc:56
 msgid "Number expected"
 msgstr "数値を期待していました"
 
-#: dlls/jscript/jscript.rc:53
+#: dlls/jscript/jscript.rc:54
 msgid "Function expected"
 msgstr "関数を期待していました"
 
-#: dlls/jscript/jscript.rc:54
+#: dlls/jscript/jscript.rc:55
 msgid "'[object]' is not a date object"
 msgstr "'[object]' は日付オブジェクトではありません"
 
-#: dlls/jscript/jscript.rc:56
+#: dlls/jscript/jscript.rc:57
 msgid "Object expected"
 msgstr "オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:57
+#: dlls/jscript/jscript.rc:58
 msgid "Illegal assignment"
 msgstr "不正な代入です"
 
-#: dlls/jscript/jscript.rc:58
+#: dlls/jscript/jscript.rc:59
 msgid "'|' is undefined"
 msgstr "'|'は未定義です"
 
-#: dlls/jscript/jscript.rc:59
+#: dlls/jscript/jscript.rc:60
 msgid "Boolean object expected"
 msgstr "Boolean オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:60
+#: dlls/jscript/jscript.rc:61
 msgid "Cannot delete '|'"
 msgstr "'|'を削除できません"
 
-#: dlls/jscript/jscript.rc:61
+#: dlls/jscript/jscript.rc:62
 msgid "VBArray object expected"
 msgstr "VBArray オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:62
+#: dlls/jscript/jscript.rc:63
 msgid "JScript object expected"
 msgstr "JScript オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:63
+#: dlls/jscript/jscript.rc:64
 msgid "Enumerator object expected"
 msgstr "列挙子オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:64
+#: dlls/jscript/jscript.rc:65
 msgid "Regular Expression object expected"
 msgstr "正規表現オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:65
+#: dlls/jscript/jscript.rc:66
 msgid "Syntax error in regular expression"
 msgstr "正規表現に構文誤りがあります"
 
-#: dlls/jscript/jscript.rc:66
+#: dlls/jscript/jscript.rc:67
 msgid "Unexpected quantifier"
 msgstr "予期しない数量詞です"
 
-#: dlls/jscript/jscript.rc:67
+#: dlls/jscript/jscript.rc:68
 msgid "Exception thrown and not caught"
 msgstr "例外が送出されましたが捕捉されませんでした"
 
-#: dlls/jscript/jscript.rc:69
+#: dlls/jscript/jscript.rc:70
 msgid "URI to be encoded contains invalid characters"
 msgstr "エンコードされる URI に使用できない文字が含まれています"
 
-#: dlls/jscript/jscript.rc:68
+#: dlls/jscript/jscript.rc:69
 msgid "URI to be decoded is incorrect"
 msgstr "デコードされる URI が正しくありません"
 
-#: dlls/jscript/jscript.rc:70
+#: dlls/jscript/jscript.rc:71
 msgid "Number of fraction digits is out of range"
 msgstr "小数点以下の桁数が範囲外です"
 
-#: dlls/jscript/jscript.rc:71
+#: dlls/jscript/jscript.rc:72
 msgid "Precision is out of range"
 msgstr "精度指定が範囲外です"
 
-#: dlls/jscript/jscript.rc:72
+#: dlls/jscript/jscript.rc:73
 msgid "Array length must be a finite positive integer"
 msgstr "配列の長さは有限の正整数である必要があります"
 
-#: dlls/jscript/jscript.rc:73
+#: dlls/jscript/jscript.rc:74
 msgid "Array object expected"
 msgstr "配列オブジェクトを期待していました"
 
-#: dlls/jscript/jscript.rc:74
+#: dlls/jscript/jscript.rc:75
 msgid ""
 "'writable' attribute on the property descriptor cannot be set to 'true' on "
 "this object"
@@ -4050,59 +4081,55 @@ msgstr ""
 "このオブジェクトにおけるプロパティ記述子の 'writable' 属性は 'true' に設定で"
 "きません"
 
-#: dlls/jscript/jscript.rc:75
+#: dlls/jscript/jscript.rc:76
 msgid "Cyclic __proto__ value"
 msgstr "循環した __proto__ 値"
 
-#: dlls/jscript/jscript.rc:76
+#: dlls/jscript/jscript.rc:77
 msgid "Cannot create property for a non-extensible object"
 msgstr "拡張可能ではないオブジェクトにプロパティを作成できません"
 
-#: dlls/jscript/jscript.rc:77
+#: dlls/jscript/jscript.rc:78
 msgid "Cannot define property '|': object is not extensible"
 msgstr "プロパティ '|' を定義できません: オブジェクトは拡張可能ではありません"
 
-#: dlls/jscript/jscript.rc:78
+#: dlls/jscript/jscript.rc:79
 msgid "Cannot redefine non-configurable property '|'"
 msgstr "変更不可のプロパティ '|' は再定義できません"
 
-#: dlls/jscript/jscript.rc:79
+#: dlls/jscript/jscript.rc:80
 msgid "Cannot modify non-writable property '|'"
 msgstr "書換不可のプロパティ '|' は変更できません"
 
-#: dlls/jscript/jscript.rc:80
-#, fuzzy
-#| msgid "'this' is not a | object"
-msgid "'this' is not a DataView object"
-msgstr "'this' は | オブジェクトではありません"
-
 #: dlls/jscript/jscript.rc:81
-msgid "Required argument offset or value in DataView method is not specified"
-msgstr ""
+msgid "'this' is not a DataView object"
+msgstr "'this' は DataView オブジェクトではありません"
 
 #: dlls/jscript/jscript.rc:82
-msgid "DataView operation access beyond specified buffer length"
-msgstr ""
+msgid "Required argument offset or value in DataView method is not specified"
+msgstr "DataView メソッドでオフセットと値の引数は省略できません"
 
 #: dlls/jscript/jscript.rc:83
-msgid "DataView constructor argument offset is invalid"
-msgstr ""
+msgid "DataView operation access beyond specified buffer length"
+msgstr "DataView 操作によるアクセスが指定されたバッファ長を超えています"
 
 #: dlls/jscript/jscript.rc:84
+msgid "DataView constructor argument offset is invalid"
+msgstr "DataView コンストラクター引数のオフセットが正しくありません"
+
+#: dlls/jscript/jscript.rc:85
 msgid "'this' is not a | object"
 msgstr "'this' は | オブジェクトではありません"
 
-#: dlls/jscript/jscript.rc:85
+#: dlls/jscript/jscript.rc:86
 msgid "'key' is not an object"
 msgstr "'key' はオブジェクトではありません"
 
-#: dlls/jscript/jscript.rc:86
-#, fuzzy
-#| msgid "Array object expected"
-msgid "ArrayBuffer object expected"
-msgstr "配列オブジェクトを期待していました"
-
 #: dlls/jscript/jscript.rc:87
+msgid "ArrayBuffer object expected"
+msgstr "ArrayBuffer オブジェクトを期待していました"
+
+#: dlls/jscript/jscript.rc:88
 msgid "Property cannot have both accessors and a value"
 msgstr "プロパティはアクセサーと値の両方になることはできません"
 
@@ -7126,7 +7153,7 @@ msgstr "引数は正しくありません。\n"
 
 #: dlls/kernelbase/winerror.mc:3778
 msgid "Cannot assign requested address.\n"
-msgstr ""
+msgstr "要求されたアドレスを割り当てられません。\n"
 
 #: dlls/kernelbase/winerror.mc:3783
 msgid "Connection reset by peer.\n"
@@ -10141,7 +10168,7 @@ msgstr "コントロール パネル"
 
 #: dlls/shell32/shell32.rc:162
 msgid "Ne&w"
-msgstr ""
+msgstr "新規作成(&W)"
 
 #: dlls/shell32/shell32.rc:164
 msgid "E&xplore"
@@ -10149,7 +10176,7 @@ msgstr "エクスプローラ(&X)"
 
 #: dlls/shell32/shell32.rc:167
 msgid "Run as &Administrator"
-msgstr ""
+msgstr "管理者として実行(&A)"
 
 #: dlls/shell32/shell32.rc:189
 msgid "Restart"
@@ -12574,10 +12601,6 @@ msgstr "名前付き引数が見つかりません"
 msgid "Wrong number of arguments or invalid property assignment"
 msgstr "引数の数に誤りがあるかプロパティの代入が正しくありません"
 
-#: dlls/vbscript/vbscript.rc:56
-msgid "Object not a collection"
-msgstr "オブジェクトはコレクションではありません"
-
 #: dlls/vbscript/vbscript.rc:57
 msgid "Specified DLL function not found"
 msgstr "指定された DLL 関数が見つかりません"
@@ -14568,22 +14591,16 @@ msgstr ""
 "8 進数 (056) のいずれかとする必要があります。\n"
 
 #: programs/cmd/cmd.rc:407
-#, fuzzy
-#| msgid "Syntax error\n"
 msgid "Syntax error: unexpected %1\n"
-msgstr "構文エラー\n"
+msgstr "構文エラー: 予期しない %1\n"
 
 #: programs/cmd/cmd.rc:408
-#, fuzzy
-#| msgid "End of file.\n"
 msgid "End of line"
-msgstr "ファイルの終端です。\n"
+msgstr "行末"
 
 #: programs/cmd/cmd.rc:409
-#, fuzzy
-#| msgid "End of file.\n"
 msgid "End of file"
-msgstr "ファイルの終端です。\n"
+msgstr "ファイルの終端"
 
 #: programs/conhost/conhost.rc:54
 msgid "Cursor size"
@@ -14767,6 +14784,10 @@ msgid ""
 "Are you sure you want to close all programs and exit the virtual desktop?"
 msgstr "すべてのプログラムを閉じて、仮想デスクトップを終了しますか?"
 
+#: programs/explorer/explorer.rc:38
+msgid "Wine Desktop"
+msgstr "Wine デスクトップ"
+
 #: programs/findstr/findstr.rc:28
 msgid "Usage: findstr /options string\n"
 msgstr "使い方: findstr /オプション 文字列\n"
@@ -14934,6 +14955,10 @@ msgstr "Kerberos チケットの暗号化の種類"
 #: programs/klist/klist.rc:37
 msgid "Current LogonId is"
 msgstr "現在のログオン ID は"
+
+#: programs/klist/klist.rc:38
+msgid "Client"
+msgstr "クライアント"
 
 #: programs/msinfo32/msinfo32.rc:28
 msgid "System Information"
@@ -18965,8 +18990,8 @@ msgstr "プログラム エラーの詳細"
 msgid ""
 "If this problem is not present under Windows and has not been reported yet, "
 "you can save the detailed information to a file using the \"Save As\" "
-"button, then <a href=\"https://wiki.winehq.org/Bugs\">file a bug report</a> "
-"and attach that file to the report."
+"button, then <a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/"
+"Bugs\">file a bug report</a> and attach that file to the report."
 msgstr ""
 "この問題が Windows 上で発生することがなくまだ報告されていない場合は、[保存す"
 "る]ボタンを利用して詳細情報を保存した上で、 <a href=\"https://wiki.winehq."
@@ -19366,10 +19391,8 @@ msgid "Help topics: "
 msgstr "ヘルプ トピック: "
 
 #: programs/wmic/wmic.rc:28
-#, fuzzy
-#| msgid "Error: Command line not supported\n"
 msgid "Error: Command not supported\n"
-msgstr "エラー: コマンド ラインはサポートされていません\n"
+msgstr "エラー: コマンドはサポートされていません\n"
 
 #: programs/wmic/wmic.rc:29
 msgid "Error: Alias not found\n"
@@ -19384,10 +19407,8 @@ msgid "Error: Invalid syntax for PATH\n"
 msgstr "エラー: PATH の構文が無効です\n"
 
 #: programs/wmic/wmic.rc:32
-#, fuzzy
-#| msgid "Bad command.\n"
 msgid "Supply a command\n"
-msgstr "コマンドが不正です。\n"
+msgstr "コマンドを入力してください\n"
 
 #: programs/wordpad/wordpad.rc:31
 msgid "&New...\tCtrl+N"

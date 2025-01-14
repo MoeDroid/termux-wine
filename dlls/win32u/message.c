@@ -34,7 +34,6 @@
 #include "dbt.h"
 #include "dde.h"
 #include "immdev.h"
-#include "wine/server.h"
 #include "wine/debug.h"
 
 WINE_DEFAULT_DEBUG_CHANNEL(msg);
@@ -2099,8 +2098,13 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
         if (is_desktop_window( hwnd )) return 0;
         return set_window_style( hwnd, wparam, lparam );
     case WM_WINE_SETACTIVEWINDOW:
+    {
+        HWND prev;
+
         if (!wparam && NtUserGetForegroundWindow() == hwnd) return 0;
-        return (LRESULT)NtUserSetActiveWindow( (HWND)wparam );
+        if (!set_active_window( (HWND)wparam, &prev, FALSE, TRUE, lparam )) return 0;
+        return (LRESULT)prev;
+    }
     case WM_WINE_KEYBOARD_LL_HOOK:
     case WM_WINE_MOUSE_LL_HOOK:
     {
@@ -2116,6 +2120,34 @@ static LRESULT handle_internal_message( HWND hwnd, UINT msg, WPARAM wparam, LPAR
     case WM_WINE_SETCURSOR:
         FIXME( "Unexpected non-hardware WM_WINE_SETCURSOR message\n" );
         return FALSE;
+    case WM_WINE_IME_NOTIFY:
+    {
+        HWND ime_hwnd = get_default_ime_window( hwnd );
+        if (!ime_hwnd || ime_hwnd == NtUserGetParent( hwnd )) return 0;
+        return send_message( ime_hwnd, WM_IME_NOTIFY, wparam, lparam );
+    }
+    case WM_WINE_WINDOW_STATE_CHANGED:
+    {
+        UINT state_cmd, config_cmd;
+        RECT window_rect;
+
+        if (!user_driver->pGetWindowStateUpdates( hwnd, &state_cmd, &config_cmd, &window_rect )) return 0;
+        if (state_cmd)
+        {
+            if (LOWORD(state_cmd) == SC_RESTORE && HIWORD(state_cmd)) NtUserSetActiveWindow( hwnd );
+            send_message( hwnd, WM_SYSCOMMAND, LOWORD(state_cmd), 0 );
+
+            /* state change might have changed the window config already, check again */
+            user_driver->pGetWindowStateUpdates( hwnd, &state_cmd, &config_cmd, &window_rect );
+            if (state_cmd) WARN( "window %p state needs another update, ignoring\n", hwnd );
+        }
+        if (config_cmd)
+        {
+            if (LOWORD(config_cmd) == SC_MOVE) NtUserSetRawWindowPos( hwnd, window_rect, HIWORD(config_cmd), FALSE );
+            else send_message( hwnd, WM_SYSCOMMAND, LOWORD(config_cmd), 0 );
+        }
+        return 0;
+    }
     case WM_WINE_UPDATEWINDOWSTATE:
         update_window_state( hwnd );
         return 0;
@@ -2626,14 +2658,18 @@ static BOOL process_hardware_message( MSG *msg, UINT hw_id, const struct hardwar
                                       HWND hwnd_filter, UINT first, UINT last, BOOL remove )
 {
     struct ntuser_thread_info *thread_info = NtUserGetThreadInfo();
+    RECT rect = {msg->pt.x, msg->pt.y, msg->pt.x, msg->pt.y};
     UINT context;
     BOOL ret = FALSE;
 
     thread_info->msg_source.deviceType = msg_data->source.device;
     thread_info->msg_source.originId   = msg_data->source.origin;
 
-    /* hardware messages are always in physical coords */
+    /* hardware messages are always in raw physical coords */
     context = set_thread_dpi_awareness_context( NTUSER_DPI_PER_MONITOR_AWARE );
+    rect = map_rect_raw_to_virt( rect, get_thread_dpi() );
+    msg->pt.x = rect.left;
+    msg->pt.y = rect.top;
 
     if (msg->message == WM_INPUT || msg->message == WM_INPUT_DEVICE_CHANGE)
         ret = process_rawinput_message( msg, hw_id, msg_data );
@@ -2714,7 +2750,7 @@ int peek_message( MSG *msg, const struct peek_message_filter *filter )
     {
         NTSTATUS res;
         size_t size = 0;
-        const message_data_t *msg_data = buffer;
+        const union message_data *msg_data = buffer;
         UINT wake_mask, signal_bits, wake_bits, changed_bits, clear_bits = 0;
 
         /* use the same logic as in server/queue.c get_message */
@@ -3027,14 +3063,22 @@ static HANDLE get_server_queue_handle(void)
     return ret;
 }
 
+/* monotonic timer tick for throttling driver event checks */
+static inline LONGLONG get_driver_check_time(void)
+{
+    LARGE_INTEGER counter, freq;
+    NtQueryPerformanceCounter( &counter, &freq );
+    return counter.QuadPart * 8000 / freq.QuadPart; /* 8kHz */
+}
+
 /* check for driver events if we detect that the app is not properly consuming messages */
 static inline void check_for_driver_events(void)
 {
-    if (get_user_thread_info()->last_driver_time != NtGetTickCount())
+    if (get_user_thread_info()->last_driver_time != get_driver_check_time())
     {
         flush_window_surfaces( FALSE );
         user_driver->pProcessEvents( QS_ALLINPUT );
-        get_user_thread_info()->last_driver_time = NtGetTickCount();
+        get_user_thread_info()->last_driver_time = get_driver_check_time();
     }
 }
 
@@ -3049,15 +3093,17 @@ static inline LARGE_INTEGER *get_nt_timeout( LARGE_INTEGER *time, DWORD timeout 
 /* wait for message or signaled handle */
 static DWORD wait_message( DWORD count, const HANDLE *handles, DWORD timeout, DWORD mask, DWORD flags )
 {
+    struct thunk_lock_params params = {.dispatch.callback = thunk_lock_callback};
     LARGE_INTEGER time;
-    DWORD ret, lock = 0;
+    DWORD ret;
     void *ret_ptr;
     ULONG ret_len;
 
-    if (enable_thunk_lock)
+    if (!KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len ) &&
+        ret_len == sizeof(params.locks))
     {
-        if (!KeUserModeCallback( NtUserThunkLock, NULL, 0, &ret_ptr, &ret_len ) && ret_len == sizeof(lock))
-            lock = *(DWORD *)ret_ptr;
+        params.locks = *(DWORD *)ret_ptr;
+        params.restore = TRUE;
     }
 
     if (user_driver->pProcessEvents( mask )) ret = count - 1;
@@ -3074,10 +3120,9 @@ static DWORD wait_message( DWORD count, const HANDLE *handles, DWORD timeout, DW
     }
 
     if (ret == WAIT_TIMEOUT && !count && !timeout) NtYieldExecution();
-    if (ret == count - 1) get_user_thread_info()->last_driver_time = NtGetTickCount();
+    if (ret == count - 1) get_user_thread_info()->last_driver_time = get_driver_check_time();
 
-    if (enable_thunk_lock)
-        KeUserModeCallback( NtUserThunkLock, &lock, sizeof(lock), &ret_ptr, &ret_len );
+    KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len );
 
     return ret;
 }
@@ -3237,8 +3282,20 @@ BOOL WINAPI NtUserPeekMessage( MSG *msg_out, HWND hwnd, UINT first, UINT last, U
     {
         if (!ret)
         {
+            struct thunk_lock_params params = {.dispatch.callback = thunk_lock_callback};
+            void *ret_ptr;
+            ULONG ret_len;
+
             flush_window_surfaces( TRUE );
+
+            if (!KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len ) &&
+                ret_len == sizeof(params.locks))
+            {
+                params.locks = *(DWORD *)ret_ptr;
+                params.restore = TRUE;
+            }
             NtYieldExecution();
+            KeUserDispatchCallback( &params.dispatch, sizeof(params), &ret_ptr, &ret_len );
         }
         return FALSE;
     }
@@ -3304,7 +3361,7 @@ BOOL WINAPI NtUserGetMessage( MSG *msg, HWND hwnd, UINT first, UINT last )
 static BOOL put_message_in_queue( const struct send_message_info *info, size_t *reply_size )
 {
     struct packed_message data;
-    message_data_t msg_data;
+    union message_data msg_data;
     unsigned int res;
     int i;
     timeout_t timeout = TIMEOUT_INFINITE;
@@ -3352,7 +3409,6 @@ static BOOL put_message_in_queue( const struct send_message_info *info, size_t *
         params.wparam   = info->wparam;
         params.lparam   = info->lparam;
         params.dest_tid = info->dest_tid;
-        params.type     = info->type;
         res = KeUserModeCallback( NtUserPostDDEMessage, &params, sizeof(params), &ret_ptr, &ret_len );
         goto done;
     }
@@ -3379,6 +3435,32 @@ done:
     if (res) RtlSetLastWin32Error( RtlNtStatusToDosError(res) );
     return !res;
 }
+
+/***********************************************************************
+ *           post_dde_message_call
+ */
+static NTSTATUS post_dde_message_call( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam,
+                                       const struct post_dde_message_call_params *params )
+{
+    NTSTATUS status;
+
+    SERVER_START_REQ( send_message )
+    {
+        req->id      = params->dest_tid;
+        req->type    = MSG_POSTED;
+        req->flags   = 0;
+        req->win     = wine_server_user_handle( hwnd );
+        req->msg     = msg;
+        req->wparam  = wparam;
+        req->lparam  = lparam;
+        req->timeout = TIMEOUT_INFINITE;
+        wine_server_add_data( req, params->ptr, params->size );
+        status = wine_server_call( req );
+    }
+    SERVER_END_REQ;
+    return status;
+}
+
 
 /***********************************************************************
  *           wait_message_reply
@@ -3633,6 +3715,20 @@ NTSTATUS send_hardware_message( HWND hwnd, UINT flags, const INPUT *input, LPARA
     return ret;
 }
 
+/***********************************************************************
+ *		post_quit_message
+ */
+BOOL post_quit_message( int exit_code )
+{
+    SERVER_START_REQ( post_quit_message )
+    {
+        req->exit_code = exit_code;
+        wine_server_call( req );
+    }
+    SERVER_END_REQ;
+    return TRUE;
+}
+
 /**********************************************************************
  *           NtUserDispatchMessage  (win32u.@)
  */
@@ -3699,7 +3795,7 @@ static BOOL broadcast_message( struct send_message_info *info, DWORD_PTR *res_pt
     HWND *list;
 
     if (is_message_broadcastable( info->msg ) &&
-        (list = list_window_children( 0, get_desktop_window(), NULL, 0 )))
+        (list = list_window_children( 0 )))
     {
         int i;
 
@@ -4354,10 +4450,10 @@ LRESULT WINAPI NtUserMessageCall( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
         return scroll_bar_window_proc( hwnd, msg, wparam, lparam, ansi );
 
     case NtUserPopupMenuWndProc:
-        return popup_menu_window_proc( hwnd, msg, wparam, lparam );
+        return popup_menu_window_proc( hwnd, msg, wparam, lparam, ansi );
 
     case NtUserDesktopWindowProc:
-        return desktop_window_proc( hwnd, msg, wparam, lparam );
+        return desktop_window_proc( hwnd, msg, wparam, lparam, ansi );
 
     case NtUserDefWindowProc:
         return default_window_proc( hwnd, msg, wparam, lparam, ansi );
@@ -4413,6 +4509,12 @@ LRESULT WINAPI NtUserMessageCall( HWND hwnd, UINT msg, WPARAM wparam, LPARAM lpa
 
     case NtUserSystemTrayCall:
         return system_tray_call( hwnd, msg, wparam, lparam, result_info );
+
+    case NtUserDragDropCall:
+        return drag_drop_call( hwnd, msg, wparam, lparam, result_info );
+
+    case NtUserPostDdeCall:
+        return post_dde_message_call( hwnd, msg, wparam, lparam, result_info );
 
     default:
         FIXME( "%p %x %lx %lx %p %x %x\n", hwnd, msg, (long)wparam, lparam, result_info, (int)type, ansi );

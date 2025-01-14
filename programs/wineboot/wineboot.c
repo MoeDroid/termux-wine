@@ -471,6 +471,20 @@ static void create_user_shared_data(void)
         features[PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE]    = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_V82_DP);
         features[PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_V83_JSCVT);
         features[PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_V83_LRCPC);
+        features[PF_ARM_SVE_INSTRUCTIONS_AVAILABLE]       = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE);
+        features[PF_ARM_SVE2_INSTRUCTIONS_AVAILABLE]      = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE2);
+        features[PF_ARM_SVE2_1_INSTRUCTIONS_AVAILABLE]    = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE2_1);
+        features[PF_ARM_SVE_AES_INSTRUCTIONS_AVAILABLE]   = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_AES);
+        features[PF_ARM_SVE_PMULL128_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_PMULL128);
+        features[PF_ARM_SVE_BITPERM_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_BITPERM);
+        features[PF_ARM_SVE_BF16_INSTRUCTIONS_AVAILABLE]  = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_BF16);
+        features[PF_ARM_SVE_EBF16_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_EBF16);
+        features[PF_ARM_SVE_B16B16_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_B16B16);
+        features[PF_ARM_SVE_SHA3_INSTRUCTIONS_AVAILABLE]  = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_SHA3);
+        features[PF_ARM_SVE_SM4_INSTRUCTIONS_AVAILABLE]   = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_SM4);
+        features[PF_ARM_SVE_I8MM_INSTRUCTIONS_AVAILABLE]  = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_I8MM);
+        features[PF_ARM_SVE_F32MM_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_F32MM);
+        features[PF_ARM_SVE_F64MM_INSTRUCTIONS_AVAILABLE] = !!(sci.ProcessorFeatureBits & CPU_FEATURE_ARM_SVE_F64MM);
         features[PF_COMPARE_EXCHANGE_DOUBLE]              = TRUE;
         features[PF_NX_ENABLED]                           = TRUE;
         features[PF_FASTFAIL_AVAILABLE]                   = TRUE;
@@ -528,6 +542,7 @@ enum smbios_type
     SMBIOS_TYPE_CHASSIS = 3,
     SMBIOS_TYPE_PROCESSOR = 4,
     SMBIOS_TYPE_BOOTINFO = 32,
+    SMBIOS_TYPE_PROCESSOR_ADDITIONAL_INFO = 44,
     SMBIOS_TYPE_END = 127
 };
 
@@ -606,6 +621,31 @@ struct smbios_processor
     WORD                 core_enabled2;
     WORD                 thread_count2;
 };
+
+struct smbios_processor_specific_block
+{
+    BYTE length;
+    BYTE processor_type;
+    BYTE data[];
+};
+
+struct smbios_processor_additional_info
+{
+    struct smbios_header hdr;
+    WORD ref_handle;
+    struct smbios_processor_specific_block info_block;
+};
+
+struct smbios_wine_core_id_regs_arm64
+{
+    WORD num_regs;
+    struct smbios_wine_id_reg_value_arm64
+    {
+        WORD reg;
+        UINT64 value;
+    } regs[];
+};
+
 #include "poppack.h"
 
 #define RSMB (('R' << 24) | ('S' << 16) | ('M' << 8) | 'B')
@@ -752,11 +792,37 @@ static void create_bios_system_values( HKEY bios_key, const char *buf, UINT len 
     }
 }
 
+#ifdef __aarch64__
+
+static void create_id_reg_keys_arm64( HKEY core_key, UINT core, const char *buf, UINT len )
+{
+    const struct smbios_header *hdr;
+    const struct smbios_processor_additional_info *additional_info;
+    const struct smbios_wine_core_id_regs_arm64 *core_id_regs;
+    static const char *reg_value_name = "CP %04X";
+    char buffer[9];
+    UINT i;
+
+    if (!(hdr = find_smbios_entry( SMBIOS_TYPE_PROCESSOR_ADDITIONAL_INFO, core, buf, len ))) return;
+
+    additional_info = (const struct smbios_processor_additional_info *)hdr;
+    core_id_regs = (const struct smbios_wine_core_id_regs_arm64 *)additional_info->info_block.data;
+
+    for (i = 0; i < core_id_regs->num_regs; i++)
+    {
+        snprintf( buffer, sizeof(buffer), reg_value_name, core_id_regs->regs[i].reg );
+        RegSetValueExA( core_key, buffer, 0, REG_QWORD,
+                        (const BYTE *)&core_id_regs->regs[i].value, sizeof(UINT64) );
+    }
+}
+
+#endif
+
 static void create_bios_processor_values( HKEY system_key, const char *buf, UINT len )
 {
     const struct smbios_header *hdr;
     const struct smbios_processor *proc;
-    unsigned int pkg, core, offset, i;
+    unsigned int pkg, core, offset, i, thread_count;
     HKEY hkey, cpu_key, fpu_key = 0, env_key;
     SYSTEM_CPU_INFORMATION sci;
     PROCESSOR_POWER_INFORMATION* power_info;
@@ -797,6 +863,7 @@ static void create_bios_processor_values( HKEY system_key, const char *buf, UINT
     for (pkg = core = 0; ; pkg++)
     {
         if (!(hdr = find_smbios_entry( SMBIOS_TYPE_PROCESSOR, pkg, buf, len ))) break;
+        if (hdr->length < 0x28) break; /* version 2.5 is required */
         proc = (const struct smbios_processor *)hdr;
         offset = (const char *)proc - buf + proc->hdr.length;
         version = get_smbios_string( proc->version, buf, offset, len );
@@ -828,7 +895,8 @@ static void create_bios_processor_values( HKEY system_key, const char *buf, UINT
             break;
         }
 
-        for (i = 0; i < proc->thread_count2; i++, core++)
+        thread_count = (proc->hdr.length >= 0x30) ? proc->thread_count2 : proc->thread_count;
+        for (i = 0; i < thread_count; i++, core++)
         {
             swprintf( buffer, ARRAY_SIZE(buffer), L"%u", core );
             if (!RegCreateKeyExW( cpu_key, buffer, 0, NULL, REG_OPTION_VOLATILE,
@@ -843,6 +911,9 @@ static void create_bios_processor_values( HKEY system_key, const char *buf, UINT
                 if (vendorid) set_reg_value( hkey, L"VendorIdentifier", vendorid );
                 if (version) set_reg_value( hkey, L"ProcessorNameString", version );
                 RegSetValueExW( hkey, L"~MHz", 0, REG_DWORD, (BYTE *)&tsc_freq_mhz, sizeof(DWORD) );
+#ifdef __aarch64__
+                create_id_reg_keys_arm64( hkey, core, buf, len );
+#endif
                 RegCloseKey( hkey );
             }
             if (fpu_key && !RegCreateKeyExW( fpu_key, buffer, 0, NULL, REG_OPTION_VOLATILE,
@@ -1405,22 +1476,49 @@ static BOOL start_services_process(void)
     return TRUE;
 }
 
+static void set_wait_dialog_text( HWND hwnd, HWND text, const WCHAR *string )
+{
+    RECT win_rect, old_rect, new_rect;
+    HDC hdc = GetDC( text );
+
+    GetClientRect( text, &old_rect );
+    new_rect = old_rect;
+    SelectObject( hdc, (HFONT)SendMessageW( text, WM_GETFONT, 0, 0 ));
+    DrawTextW( hdc, string, -1, &new_rect, DT_CALCRECT | DT_EDITCONTROL | DT_WORDBREAK | DT_NOPREFIX );
+    ReleaseDC( text, hdc );
+    if (new_rect.bottom > old_rect.bottom)
+    {
+        GetWindowRect( hwnd, &win_rect );
+        win_rect.bottom += new_rect.bottom - old_rect.bottom;
+        SetWindowPos( hwnd, 0, 0, 0, win_rect.right - win_rect.left, win_rect.bottom - win_rect.top,
+                      SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER );
+        SetWindowPos( text, 0, 0, 0, new_rect.right, new_rect.bottom,
+                      SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOZORDER );
+    }
+    SendMessageW( text, WM_SETTEXT, 0, (LPARAM)string );
+}
+
 static INT_PTR CALLBACK wait_dlgproc( HWND hwnd, UINT msg, WPARAM wp, LPARAM lp )
 {
     switch (msg)
     {
     case WM_INITDIALOG:
         {
-            DWORD len;
+            DWORD len, icon_size;
+            RECT rect;
             WCHAR *buffer, text[1024];
             const WCHAR *name = (WCHAR *)lp;
-            HICON icon = LoadImageW( 0, (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, 48, 48, LR_SHARED );
+            HICON icon;
+
+            GetClientRect( GetDlgItem( hwnd, IDC_WAITICON ), &rect );
+            icon_size = min( rect.right, rect.bottom );
+            icon = LoadImageW( 0, (LPCWSTR)IDI_WINLOGO, IMAGE_ICON, icon_size, icon_size, LR_SHARED );
             SendDlgItemMessageW( hwnd, IDC_WAITICON, STM_SETICON, (WPARAM)icon, 0 );
             SendDlgItemMessageW( hwnd, IDC_WAITTEXT, WM_GETTEXT, 1024, (LPARAM)text );
             len = lstrlenW(text) + lstrlenW(name) + 1;
             buffer = malloc( len * sizeof(WCHAR) );
             swprintf( buffer, len, text, name );
-            SendDlgItemMessageW( hwnd, IDC_WAITTEXT, WM_SETTEXT, 0, (LPARAM)buffer );
+            set_wait_dialog_text( hwnd, GetDlgItem( hwnd, IDC_WAITTEXT ), buffer );
             free( buffer );
         }
         break;
@@ -1475,6 +1573,7 @@ static void install_root_pnp_devices(void)
     }
     root_devices[] =
     {
+        {"root\\wine\\winebth", "root\\winebth\0", "C:\\windows\\inf\\winebth.inf"},
         {"root\\wine\\winebus", "root\\winebus\0", "C:\\windows\\inf\\winebus.inf"},
         {"root\\wine\\wineusb", "root\\wineusb\0", "C:\\windows\\inf\\wineusb.inf"},
     };

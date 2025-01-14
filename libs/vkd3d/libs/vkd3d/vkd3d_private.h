@@ -37,7 +37,6 @@
 #include "vkd3d.h"
 #include "vkd3d_shader.h"
 
-#include <assert.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -123,6 +122,7 @@ struct vkd3d_vulkan_info
     bool KHR_image_format_list;
     bool KHR_maintenance2;
     bool KHR_maintenance3;
+    bool KHR_portability_subset;
     bool KHR_push_descriptor;
     bool KHR_sampler_mirror_clamp_to_edge;
     bool KHR_timeline_semaphore;
@@ -131,6 +131,7 @@ struct vkd3d_vulkan_info
     bool EXT_calibrated_timestamps;
     bool EXT_conditional_rendering;
     bool EXT_debug_marker;
+    bool EXT_depth_range_unrestricted;
     bool EXT_depth_clip_enable;
     bool EXT_descriptor_indexing;
     bool EXT_fragment_shader_interlock;
@@ -145,6 +146,8 @@ struct vkd3d_vulkan_info
 
     bool rasterization_stream;
     bool transform_feedback_queries;
+    bool geometry_shaders;
+    bool tessellation_shaders;
 
     bool uav_read_without_format;
 
@@ -676,7 +679,7 @@ static inline void *d3d12_desc_get_object_ref(const volatile struct d3d12_desc *
     void *view;
 
     /* Some games, e.g. Shadow of the Tomb Raider, GRID 2019, and Horizon Zero Dawn, write descriptors
-     * from multiple threads without syncronisation. This is apparently valid in Windows. */
+     * from multiple threads without synchronisation. This is apparently valid in Windows. */
     for (;;)
     {
         do
@@ -769,14 +772,21 @@ void d3d12_dsv_desc_create_dsv(struct d3d12_dsv_desc *dsv_desc, struct d3d12_dev
 
 enum vkd3d_vk_descriptor_set_index
 {
-    VKD3D_SET_INDEX_UNIFORM_BUFFER = 0,
-    VKD3D_SET_INDEX_UNIFORM_TEXEL_BUFFER = 1,
-    VKD3D_SET_INDEX_SAMPLED_IMAGE = 2,
-    VKD3D_SET_INDEX_STORAGE_TEXEL_BUFFER = 3,
-    VKD3D_SET_INDEX_STORAGE_IMAGE = 4,
-    VKD3D_SET_INDEX_SAMPLER = 5,
-    VKD3D_SET_INDEX_UAV_COUNTER = 6,
-    VKD3D_SET_INDEX_COUNT = 7
+    VKD3D_SET_INDEX_SAMPLER,
+    VKD3D_SET_INDEX_UAV_COUNTER,
+    VKD3D_SET_INDEX_MUTABLE,
+
+    /* These are used when mutable descriptors are not available to back
+     * SRV-UAV-CBV descriptor heaps. They must stay at the end of this
+     * enumeration, so that they can be ignored when mutable descriptors are
+     * used. */
+    VKD3D_SET_INDEX_UNIFORM_BUFFER = VKD3D_SET_INDEX_MUTABLE,
+    VKD3D_SET_INDEX_UNIFORM_TEXEL_BUFFER,
+    VKD3D_SET_INDEX_SAMPLED_IMAGE,
+    VKD3D_SET_INDEX_STORAGE_TEXEL_BUFFER,
+    VKD3D_SET_INDEX_STORAGE_IMAGE,
+
+    VKD3D_SET_INDEX_COUNT
 };
 
 extern const enum vkd3d_vk_descriptor_set_index vk_descriptor_set_index_table[];
@@ -784,8 +794,8 @@ extern const enum vkd3d_vk_descriptor_set_index vk_descriptor_set_index_table[];
 static inline enum vkd3d_vk_descriptor_set_index vkd3d_vk_descriptor_set_index_from_vk_descriptor_type(
         VkDescriptorType type)
 {
-    assert(type <= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-    assert(vk_descriptor_set_index_table[type] < VKD3D_SET_INDEX_COUNT);
+    VKD3D_ASSERT(type <= VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+    VKD3D_ASSERT(vk_descriptor_set_index_table[type] < VKD3D_SET_INDEX_COUNT);
 
     return vk_descriptor_set_index_table[type];
 }
@@ -1229,7 +1239,7 @@ enum vkd3d_pipeline_bind_point
 /* ID3D12CommandList */
 struct d3d12_command_list
 {
-    ID3D12GraphicsCommandList5 ID3D12GraphicsCommandList5_iface;
+    ID3D12GraphicsCommandList6 ID3D12GraphicsCommandList6_iface;
     unsigned int refcount;
 
     D3D12_COMMAND_LIST_TYPE type;
@@ -1252,7 +1262,7 @@ struct d3d12_command_list
     VkFormat dsv_format;
 
     bool xfb_enabled;
-
+    bool has_depth_bounds;
     bool is_predicated;
 
     VkFramebuffer current_framebuffer;
@@ -1269,7 +1279,6 @@ struct d3d12_command_list
     VkBuffer so_counter_buffers[D3D12_SO_BUFFER_SLOT_COUNT];
     VkDeviceSize so_counter_buffer_offsets[D3D12_SO_BUFFER_SLOT_COUNT];
 
-    void (*update_descriptors)(struct d3d12_command_list *list, enum vkd3d_pipeline_bind_point bind_point);
     struct d3d12_descriptor_heap *descriptor_heaps[64];
     unsigned int descriptor_heap_count;
 
@@ -1753,7 +1762,6 @@ static inline void vk_prepend_struct(void *header, void *structure)
 {
     VkBaseOutStructure *vk_header = header, *vk_structure = structure;
 
-    assert(!vk_structure->pNext);
     vk_structure->pNext = vk_header->pNext;
     vk_header->pNext = vk_structure;
 }
@@ -1766,7 +1774,7 @@ static inline void vkd3d_prepend_struct(void *header, void *structure)
         const void *next;
     } *vkd3d_header = header, *vkd3d_structure = structure;
 
-    assert(!vkd3d_structure->next);
+    VKD3D_ASSERT(!vkd3d_structure->next);
     vkd3d_structure->next = vkd3d_header->next;
     vkd3d_header->next = vkd3d_structure;
 }

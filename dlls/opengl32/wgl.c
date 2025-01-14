@@ -1176,7 +1176,7 @@ typedef struct _bezier_vector {
     GLdouble y;
 } bezier_vector;
 
-static double bezier_deviation_squared(const bezier_vector *p)
+static BOOL bezier_fits_deviation(const bezier_vector *p, FLOAT max_deviation)
 {
     bezier_vector deviation;
     bezier_vector vertex;
@@ -1184,25 +1184,36 @@ static double bezier_deviation_squared(const bezier_vector *p)
     double base_length;
     double dot;
 
+    max_deviation *= max_deviation;
+
     vertex.x = (p[0].x + p[1].x*2 + p[2].x)/4 - p[0].x;
     vertex.y = (p[0].y + p[1].y*2 + p[2].y)/4 - p[0].y;
 
     base.x = p[2].x - p[0].x;
     base.y = p[2].y - p[0].y;
 
-    base_length = sqrt(base.x*base.x + base.y*base.y);
-    base.x /= base_length;
-    base.y /= base_length;
+    base_length = base.x * base.x + base.y * base.y;
+    if (base_length <= max_deviation)
+    {
+        base.x = 0.0;
+        base.y = 0.0;
+    }
+    else
+    {
+        base_length = sqrt(base_length);
+        base.x /= base_length;
+        base.y /= base_length;
 
-    dot = base.x*vertex.x + base.y*vertex.y;
-    dot = min(max(dot, 0.0), base_length);
-    base.x *= dot;
-    base.y *= dot;
+        dot = base.x*vertex.x + base.y*vertex.y;
+        dot = min(max(dot, 0.0), base_length);
+        base.x *= dot;
+        base.y *= dot;
+    }
 
     deviation.x = vertex.x-base.x;
     deviation.y = vertex.y-base.y;
 
-    return deviation.x*deviation.x + deviation.y*deviation.y;
+    return deviation.x*deviation.x + deviation.y*deviation.y <= max_deviation;
 }
 
 static int bezier_approximate(const bezier_vector *p, bezier_vector *points, FLOAT deviation)
@@ -1212,7 +1223,7 @@ static int bezier_approximate(const bezier_vector *p, bezier_vector *points, FLO
     bezier_vector vertex;
     int total_vertices;
 
-    if(bezier_deviation_squared(p) <= deviation*deviation)
+    if (bezier_fits_deviation(p, deviation))
     {
         if(points)
             *points = p[2];
@@ -1880,7 +1891,7 @@ typedef void (WINAPI *gl_debug_message)(GLenum, GLenum, GLuint, GLenum, GLsizei,
 
 static NTSTATUS WINAPI call_gl_debug_message_callback( void *args, ULONG size )
 {
-    struct wine_gl_debug_message_params *params = args;
+    struct gl_debug_message_callback_params *params = args;
     gl_debug_message callback = (void *)(UINT_PTR)params->debug_callback;
     const void *user = (void *)(UINT_PTR)params->debug_user;
     callback( params->source, params->type, params->id, params->severity,
@@ -1893,20 +1904,22 @@ static NTSTATUS WINAPI call_gl_debug_message_callback( void *args, ULONG size )
  */
 BOOL WINAPI DllMain( HINSTANCE hinst, DWORD reason, LPVOID reserved )
 {
-    KERNEL_CALLBACK_PROC *kernel_callback_table;
+    struct process_attach_params params =
+    {
+        .call_gl_debug_message_callback = (UINT_PTR)call_gl_debug_message_callback,
+    };
     NTSTATUS status;
 
     switch(reason)
     {
     case DLL_PROCESS_ATTACH:
-        if ((status = __wine_init_unix_call()))
+        if ((status = __wine_init_unix_call()) ||
+            (status = UNIX_CALL( process_attach, &params )))
         {
             ERR( "Failed to load unixlib, status %#lx\n", status );
             return FALSE;
         }
 
-        kernel_callback_table = NtCurrentTeb()->Peb->KernelCallbackTable;
-        kernel_callback_table[NtUserCallOpenGLDebugMessageCallback] = call_gl_debug_message_callback;
         /* fallthrough */
     case DLL_THREAD_ATTACH:
         if ((status = UNIX_CALL( thread_attach, NtCurrentTeb() )))

@@ -36,6 +36,7 @@
 #include "ddk/ntifs.h"
 #include "wine/test.h"
 #include "wine/asm.h"
+#include "wine/rbtree.h"
 
 #ifndef __WINE_WINTERNL_H
 
@@ -56,6 +57,8 @@ typedef struct _RTL_HANDLE_TABLE
 } RTL_HANDLE_TABLE;
 
 #endif
+
+static BOOL is_win64 = (sizeof(void *) > sizeof(int));
 
 /* avoid #include <winsock2.h> */
 #undef htons
@@ -107,6 +110,16 @@ static NTSTATUS  (WINAPI *pLdrEnumerateLoadedModules)(void *, void *, void *);
 static NTSTATUS  (WINAPI *pLdrRegisterDllNotification)(ULONG, PLDR_DLL_NOTIFICATION_FUNCTION, void *, void **);
 static NTSTATUS  (WINAPI *pLdrUnregisterDllNotification)(void *);
 static VOID      (WINAPI *pRtlGetDeviceFamilyInfoEnum)(ULONGLONG *,DWORD *,DWORD *);
+static void      (WINAPI *pRtlRbInsertNodeEx)(RTL_RB_TREE *, RTL_BALANCED_NODE *, BOOLEAN, RTL_BALANCED_NODE *);
+static void      (WINAPI *pRtlRbRemoveNode)(RTL_RB_TREE *, RTL_BALANCED_NODE *);
+static DWORD     (WINAPI *pRtlConvertDeviceFamilyInfoToString)(DWORD *, DWORD *, WCHAR *, WCHAR *);
+static NTSTATUS  (WINAPI *pRtlInitializeNtUserPfn)( const UINT64 *client_procsA, ULONG procsA_size,
+                                                    const UINT64 *client_procsW, ULONG procsW_size,
+                                                    const void *client_workers, ULONG workers_size );
+static NTSTATUS  (WINAPI *pRtlRetrieveNtUserPfn)( const UINT64 **client_procsA,
+                                                  const UINT64 **client_procsW,
+                                                  const UINT64 **client_workers );
+static NTSTATUS  (WINAPI *pRtlResetNtUserPfn)(void);
 
 static HMODULE hkernel32 = 0;
 static BOOL      (WINAPI *pIsWow64Process)(HANDLE, PBOOL);
@@ -151,6 +164,12 @@ static void InitFunctionPtrs(void)
         pLdrRegisterDllNotification = (void *)GetProcAddress(hntdll, "LdrRegisterDllNotification");
         pLdrUnregisterDllNotification = (void *)GetProcAddress(hntdll, "LdrUnregisterDllNotification");
         pRtlGetDeviceFamilyInfoEnum = (void *)GetProcAddress(hntdll, "RtlGetDeviceFamilyInfoEnum");
+        pRtlRbInsertNodeEx = (void *)GetProcAddress(hntdll, "RtlRbInsertNodeEx");
+        pRtlRbRemoveNode = (void *)GetProcAddress(hntdll, "RtlRbRemoveNode");
+        pRtlConvertDeviceFamilyInfoToString = (void *)GetProcAddress(hntdll, "RtlConvertDeviceFamilyInfoToString");
+        pRtlInitializeNtUserPfn = (void *)GetProcAddress(hntdll, "RtlInitializeNtUserPfn");
+        pRtlRetrieveNtUserPfn = (void *)GetProcAddress(hntdll, "RtlRetrieveNtUserPfn");
+        pRtlResetNtUserPfn = (void *)GetProcAddress(hntdll, "RtlResetNtUserPfn");
     }
     hkernel32 = LoadLibraryA("kernel32.dll");
     ok(hkernel32 != 0, "LoadLibrary failed\n");
@@ -3784,6 +3803,270 @@ static void test_RtlGetDeviceFamilyInfoEnum(void)
     trace( "UAP version is %#I64x, device family is %lu, form factor is %lu\n", version, family, form );
 }
 
+struct test_rb_tree_entry
+{
+    int value;
+    struct rb_entry wine_rb_entry;
+    RTL_BALANCED_NODE rtl_entry;
+};
+
+static int test_rb_tree_entry_compare( const void *key, const struct wine_rb_entry *entry )
+{
+    const struct test_rb_tree_entry *t = WINE_RB_ENTRY_VALUE(entry, struct test_rb_tree_entry, wine_rb_entry);
+    const int *value = key;
+
+    return *value - t->value;
+}
+
+static int test_rtl_rb_tree_entry_compare( const void *key, const RTL_BALANCED_NODE *entry )
+{
+    const struct test_rb_tree_entry *t = CONTAINING_RECORD(entry, struct test_rb_tree_entry, rtl_entry);
+    const int *value = key;
+
+    return *value - t->value;
+}
+
+static int rtl_rb_tree_put( RTL_RB_TREE *tree, const void *key, RTL_BALANCED_NODE *entry,
+                            int (*compare_func)( const void *key, const RTL_BALANCED_NODE *entry ))
+{
+    RTL_BALANCED_NODE *parent = tree->root;
+    BOOLEAN right = 0;
+    int c;
+
+    while (parent)
+    {
+        if (!(c = compare_func( key, parent ))) return -1;
+        right = c > 0;
+        if (!parent->Children[right]) break;
+        parent = parent->Children[right];
+    }
+    pRtlRbInsertNodeEx( tree, parent, right, entry );
+    return 0;
+}
+
+static struct test_rb_tree_entry *test_rb_tree_entry_from_wine_rb( struct rb_entry *entry )
+{
+    if (!entry) return NULL;
+    return CONTAINING_RECORD(entry, struct test_rb_tree_entry, wine_rb_entry);
+}
+
+static struct test_rb_tree_entry *test_rb_tree_entry_from_rtl_rb( RTL_BALANCED_NODE *entry )
+{
+    if (!entry) return NULL;
+    return CONTAINING_RECORD(entry, struct test_rb_tree_entry, rtl_entry);
+}
+
+static struct test_rb_tree_entry *test_rb_tree_entry_rtl_parent( struct test_rb_tree_entry *node )
+{
+    return test_rb_tree_entry_from_rtl_rb( (void *)(node->rtl_entry.ParentValue
+                                           & ~(ULONG_PTR)RTL_BALANCED_NODE_RESERVED_PARENT_MASK) );
+}
+
+static void test_rb_tree(void)
+{
+    static int test_values[] = { 44, 51, 6, 66, 69, 20, 87, 80, 72, 86, 90, 16, 54, 61, 62, 14, 27, 39, 42, 41 };
+    static const unsigned int count = ARRAY_SIZE(test_values);
+
+    struct test_rb_tree_entry *nodes, *parent, *parent2;
+    RTL_BALANCED_NODE *prev_min_entry = NULL;
+    int ret, is_red, min_val;
+    struct rb_tree wine_tree;
+    RTL_RB_TREE rtl_tree;
+    unsigned int i;
+
+    if (!pRtlRbInsertNodeEx)
+    {
+        win_skip( "RtlRbInsertNodeEx is not present.\n" );
+        return;
+    }
+
+    memset( &rtl_tree, 0, sizeof(rtl_tree) );
+    nodes = malloc( count * sizeof(*nodes) );
+    memset( nodes, 0xcc, count * sizeof(*nodes) );
+
+    min_val = test_values[0];
+    rb_init( &wine_tree, test_rb_tree_entry_compare );
+    for (i = 0; i < count; ++i)
+    {
+        winetest_push_context( "i %u", i );
+        nodes[i].value = test_values[i];
+        ret = rb_put( &wine_tree, &nodes[i].value, &nodes[i].wine_rb_entry );
+        ok( !ret, "got %d.\n", ret );
+        parent = test_rb_tree_entry_from_wine_rb( nodes[i].wine_rb_entry.parent );
+        ret = rtl_rb_tree_put( &rtl_tree, &nodes[i].value, &nodes[i].rtl_entry, test_rtl_rb_tree_entry_compare );
+        ok( !ret, "got %d.\n", ret );
+        parent2 = test_rb_tree_entry_rtl_parent( &nodes[i] );
+        ok( parent == parent2, "got %p, %p.\n", parent, parent2 );
+        is_red = nodes[i].rtl_entry.ParentValue & RTL_BALANCED_NODE_RESERVED_PARENT_MASK;
+        ok( is_red == rb_is_red( &nodes[i].wine_rb_entry ), "got %d, expected %d.\n", is_red,
+            rb_is_red( &nodes[i].wine_rb_entry ));
+
+        parent = test_rb_tree_entry_from_wine_rb( wine_tree.root );
+        parent2 = test_rb_tree_entry_from_rtl_rb( rtl_tree.root );
+        ok( parent == parent2, "got %p, %p.\n", parent, parent2 );
+        if (nodes[i].value <= min_val)
+        {
+            min_val = nodes[i].value;
+            prev_min_entry = &nodes[i].rtl_entry;
+        }
+        ok( rtl_tree.min == prev_min_entry, "unexpected min tree entry.\n" );
+        winetest_pop_context();
+    }
+
+    for (i = 0; i < count; ++i)
+    {
+        struct test_rb_tree_entry *node;
+
+        winetest_push_context( "i %u", i );
+        rb_remove( &wine_tree, &nodes[i].wine_rb_entry );
+        pRtlRbRemoveNode( &rtl_tree, &nodes[i].rtl_entry );
+
+        parent = test_rb_tree_entry_from_wine_rb( wine_tree.root );
+        parent2 = test_rb_tree_entry_from_rtl_rb( rtl_tree.root );
+        ok( parent == parent2, "got %p, %p.\n", parent, parent2 );
+
+        parent = test_rb_tree_entry_from_wine_rb( rb_head( wine_tree.root ));
+        parent2 = test_rb_tree_entry_from_rtl_rb( rtl_tree.min );
+        ok( parent == parent2, "got %p, %p.\n", parent, parent2 );
+
+        RB_FOR_EACH_ENTRY(node, &wine_tree, struct test_rb_tree_entry, wine_rb_entry)
+        {
+            is_red = node->rtl_entry.ParentValue & RTL_BALANCED_NODE_RESERVED_PARENT_MASK;
+            ok( is_red == rb_is_red( &node->wine_rb_entry ), "got %d, expected %d.\n", is_red, rb_is_red( &node->wine_rb_entry ));
+            parent = test_rb_tree_entry_from_wine_rb( node->wine_rb_entry.parent );
+            parent2 = test_rb_tree_entry_rtl_parent( node );
+            ok( parent == parent2, "got %p, %p.\n", parent, parent2 );
+        }
+        winetest_pop_context();
+    }
+    ok( !rtl_tree.root, "got %p.\n", rtl_tree.root );
+    ok( !rtl_tree.min, "got %p.\n", rtl_tree.min );
+    free(nodes);
+}
+
+static void test_RtlConvertDeviceFamilyInfoToString(void)
+{
+    DWORD device_family_size, device_form_size, ret;
+    WCHAR device_family[16], device_form[16];
+
+    if (!pRtlConvertDeviceFamilyInfoToString)
+    {
+        win_skip("RtlConvertDeviceFamilyInfoToString is unavailable.\n" );
+        return;
+    }
+
+    if (0) /* Crash on Windows */
+    {
+    ret = pRtlConvertDeviceFamilyInfoToString(NULL, NULL, NULL, NULL);
+    ok(ret == STATUS_INVALID_PARAMETER, "Got unexpected status %#lx.\n", ret);
+
+    device_family_size = 0;
+    ret = pRtlConvertDeviceFamilyInfoToString(&device_family_size, NULL, NULL, NULL);
+    ok(ret == STATUS_BUFFER_TOO_SMALL, "Got unexpected status %#lx.\n", ret);
+    ok(device_family_size == (wcslen(L"Windows.Desktop") + 1) * sizeof(WCHAR),
+       "Got unexpected %#lx.\n", device_family_size);
+
+    device_form_size = 0;
+    ret = pRtlConvertDeviceFamilyInfoToString(NULL, &device_form_size, NULL, NULL);
+    ok(ret == STATUS_BUFFER_TOO_SMALL, "Got unexpected status %#lx.\n", ret);
+    ok(device_form_size == (wcslen(L"Unknown") + 1) * sizeof(WCHAR), "Got unexpected %#lx.\n",
+       device_form_size);
+
+    ret = pRtlConvertDeviceFamilyInfoToString(&device_family_size, NULL, device_family, NULL);
+    ok(ret == STATUS_SUCCESS, "Got unexpected status %#lx.\n", ret);
+    ok(device_family_size == (wcslen(L"Windows.Desktop") + 1) * sizeof(WCHAR),
+       "Got unexpected %#lx.\n", device_family_size);
+    ok(!wcscmp(device_family, L"Windows.Desktop"), "Got unexpected %s.\n", wine_dbgstr_w(device_family));
+
+    ret = pRtlConvertDeviceFamilyInfoToString(NULL, &device_form_size, NULL, device_form);
+    ok(ret == STATUS_SUCCESS, "Got unexpected status %#lx.\n", ret);
+    ok(device_form_size == (wcslen(L"Unknown") + 1) * sizeof(WCHAR), "Got unexpected %#lx.\n",
+       device_form_size);
+    ok(!wcscmp(device_form, L"Unknown"), "Got unexpected %s.\n", wine_dbgstr_w(device_form));
+
+    ret = pRtlConvertDeviceFamilyInfoToString(&device_family_size, &device_form_size, NULL, NULL);
+    ok(ret == STATUS_INVALID_PARAMETER, "Got unexpected status %#lx.\n", ret);
+    }
+
+    device_family_size = wcslen(L"Windows.Desktop") * sizeof(WCHAR);
+    device_form_size = wcslen(L"Unknown") * sizeof(WCHAR);
+    ret = pRtlConvertDeviceFamilyInfoToString(&device_family_size, &device_form_size, NULL, NULL);
+    ok(ret == STATUS_BUFFER_TOO_SMALL, "Got unexpected status %#lx.\n", ret);
+    ok(device_family_size == (wcslen(L"Windows.Desktop") + 1) * sizeof(WCHAR),
+       "Got unexpected %#lx.\n", device_family_size);
+    ok(device_form_size == (wcslen(L"Unknown") + 1) * sizeof(WCHAR), "Got unexpected %#lx.\n",
+       device_form_size);
+
+    ret = pRtlConvertDeviceFamilyInfoToString(&device_family_size, &device_form_size, device_family, device_form);
+    ok(ret == STATUS_SUCCESS, "Got unexpected status %#lx.\n", ret);
+    ok(!wcscmp(device_family, L"Windows.Desktop"), "Got unexpected %s.\n", wine_dbgstr_w(device_family));
+    ok(!wcscmp(device_form, L"Unknown"), "Got unexpected %s.\n", wine_dbgstr_w(device_form));
+}
+
+static void test_user_procs(void)
+{
+    UINT64 ptrs[32], dummy[32] = { 0 };
+    NTSTATUS status;
+    const UINT64 *ptr_A, *ptr_W, *ptr_workers;
+    ULONG size_A, size_W, size_workers;
+
+    if (!pRtlRetrieveNtUserPfn || !pRtlInitializeNtUserPfn)
+    {
+        win_skip( "user procs not supported\n" );
+        return;
+    }
+
+    status = pRtlRetrieveNtUserPfn( &ptr_A, &ptr_W, &ptr_workers );
+    ok( !status || broken(!is_win64 && status == STATUS_INVALID_PARAMETER), /* <= win8 32-bit */
+        "RtlRetrieveNtUserPfn failed %lx\n", status );
+    if (status) return;
+
+    /* assume that the tables are consecutive */
+    size_A = (ptr_W - ptr_A) * sizeof(UINT64);
+    size_W = (ptr_workers - ptr_W) * sizeof(UINT64);
+    ok( size_A > 0x80 && size_A < 0x100, "unexpected size for %p %p %p\n", ptr_A, ptr_W, ptr_workers );
+    ok( size_W == size_A, "unexpected size for %p %p %p\n", ptr_A, ptr_W, ptr_workers );
+    memcpy( ptrs, ptr_A, size_A );
+
+    status = pRtlInitializeNtUserPfn( dummy, size_A, dummy + 1, size_W, dummy + 2, 0 );
+    ok( status == STATUS_INVALID_PARAMETER, "RtlInitializeNtUserPfn failed %lx\n", status );
+
+    if (!pRtlResetNtUserPfn)
+    {
+        win_skip( "RtlResetNtUserPfn not supported\n" );
+        return;
+    }
+
+    status = pRtlResetNtUserPfn();
+    ok( !status, "RtlResetNtUserPfn failed %lx\n", status );
+    ok( !memcmp( ptrs, ptr_A, size_A ), "pointers changed by reset\n" );
+
+    /* can't do anything after reset except set them again */
+    status = pRtlResetNtUserPfn();
+    ok( status == STATUS_INVALID_PARAMETER, "RtlResetNtUserPfn failed %lx\n", status );
+    status = pRtlRetrieveNtUserPfn( &ptr_A, &ptr_W, &ptr_workers );
+    ok( status == STATUS_INVALID_PARAMETER, "RtlRetrieveNtUserPfn failed %lx\n", status );
+
+    for (size_workers = 0x100; size_workers > 0; size_workers--)
+    {
+        status = pRtlInitializeNtUserPfn( dummy, size_A, dummy + 1, size_W, dummy + 2, size_workers );
+        if (!status) break;
+        ok( status == STATUS_INVALID_PARAMETER, "RtlInitializeNtUserPfn failed %lx\n", status );
+    }
+    trace( "got sizes %lx %lx %lx\n", size_A, size_W, size_workers );
+    if (!size_workers) return;  /* something went wrong */
+    ok( !memcmp( ptrs, ptr_A, size_A ), "pointers changed by init\n" );
+
+    /* can't set twice without a reset */
+    status = pRtlInitializeNtUserPfn( dummy, size_A, dummy + 1, size_W, dummy + 2, size_workers );
+    ok( status == STATUS_INVALID_PARAMETER, "RtlInitializeNtUserPfn failed %lx\n", status );
+    status = pRtlResetNtUserPfn();
+    ok( !status, "RtlResetNtUserPfn failed %lx\n", status );
+    status = pRtlInitializeNtUserPfn( dummy, size_A, dummy + 1, size_W, dummy + 2, size_workers );
+    ok( !status, "RtlInitializeNtUserPfn failed %lx\n", status );
+    ok( !memcmp( ptrs, ptr_A, size_A ), "pointers changed by init\n" );
+}
+
 START_TEST(rtl)
 {
     InitFunctionPtrs();
@@ -3833,4 +4116,7 @@ START_TEST(rtl)
     test_RtlValidSecurityDescriptor();
     test_RtlFindExportedRoutineByName();
     test_RtlGetDeviceFamilyInfoEnum();
+    test_RtlConvertDeviceFamilyInfoToString();
+    test_rb_tree();
+    test_user_procs();
 }

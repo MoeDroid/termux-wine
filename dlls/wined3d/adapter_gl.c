@@ -57,7 +57,6 @@ static const struct wined3d_extension_map gl_extension_map[] =
 
     /* ARB */
     {"GL_ARB_base_instance",                ARB_BASE_INSTANCE             },
-    {"GL_ARB_bindless_texture",             ARB_BINDLESS_TEXTURE          },
     {"GL_ARB_blend_func_extended",          ARB_BLEND_FUNC_EXTENDED       },
     {"GL_ARB_buffer_storage",               ARB_BUFFER_STORAGE            },
     {"GL_ARB_clear_buffer_object",          ARB_CLEAR_BUFFER_OBJECT       },
@@ -2048,12 +2047,6 @@ static void load_gl_funcs(struct wined3d_gl_info *gl_info)
     /* GL_ARB_base_instance */
     USE_GL_FUNC(glDrawArraysInstancedBaseInstance)
     USE_GL_FUNC(glDrawElementsInstancedBaseVertexBaseInstance)
-    /* GL_ARB_bindless_texture */
-    USE_GL_FUNC(glGetTextureHandleARB)
-    USE_GL_FUNC(glGetTextureSamplerHandleARB)
-    USE_GL_FUNC(glIsTextureHandleResidentARB)
-    USE_GL_FUNC(glMakeTextureHandleResidentARB)
-    USE_GL_FUNC(glUniformHandleui64ARB)
     /* GL_ARB_blend_func_extended */
     USE_GL_FUNC(glBindFragDataLocationIndexed)
     USE_GL_FUNC(glGetFragDataIndex)
@@ -3540,14 +3533,6 @@ static BOOL wined3d_adapter_init_gl_caps(struct wined3d_adapter_gl *adapter_gl,
         /* GL_ARB_half_float_vertex is a subset of GL_NV_half_float. */
         gl_info->supported[ARB_HALF_FLOAT_VERTEX] = TRUE;
     }
-    if (wined3d_creation_flags & WINED3D_SRGB_READ_WRITE_CONTROL)
-    {
-        /* ARB_bindless_texture does not let us use EXT_texture_sRGB_decode.
-         * We could use ARB_texture_view, but the main reason to use bindless
-         * textures is to avoid GL_MAX_TEXTURE_IMAGE_UNITS, so there's not much
-         * point. */
-        gl_info->supported[ARB_BINDLESS_TEXTURE] = FALSE;
-    }
     if (gl_info->supported[ARB_FRAMEBUFFER_SRGB] && !gl_info->supported[EXT_TEXTURE_SRGB_DECODE])
     {
         /* Current wined3d sRGB infrastructure requires EXT_texture_sRGB_decode
@@ -4928,6 +4913,7 @@ static void wined3d_adapter_gl_init_d3d_info(struct wined3d_adapter_gl *adapter_
     d3d_info->feature_level = feature_level_from_caps(gl_info, &shader_caps, &d3d_info->ffp_fragment_caps);
     d3d_info->filling_convention_offset = gl_info->filling_convention_offset;
     d3d_info->persistent_map = !!gl_info->supported[ARB_BUFFER_STORAGE];
+    d3d_info->ffp_hlsl = wined3d_settings.ffp_hlsl;
 
     if (gl_info->supported[ARB_TEXTURE_MULTISAMPLE])
         d3d_info->multisample_draw_location = WINED3D_LOCATION_TEXTURE_RGB;

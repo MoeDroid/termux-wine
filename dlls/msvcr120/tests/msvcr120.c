@@ -26,6 +26,7 @@
 #include <fenv.h>
 #include <limits.h>
 #include <wctype.h>
+#include <share.h>
 
 #include <windef.h>
 #include <winbase.h>
@@ -213,6 +214,7 @@ static int (CDECL *p_fegetexceptflag)(fexcept_t*,int);
 static int (CDECL *p_fesetexceptflag)(const fexcept_t*,int);
 static int (CDECL *p_fetestexcept)(int);
 static int (CDECL *p_feclearexcept)(int);
+static int (CDECL *p_feholdexcept)(fenv_t*);
 static int (CDECL *p_feupdateenv)(fenv_t*);
 static int (CDECL *p__clearfp)(void);
 static _locale_t (__cdecl *p_wcreate_locale)(int, const wchar_t *);
@@ -232,6 +234,10 @@ static struct tm* (__cdecl *p_gmtime32)(__time32_t*);
 static errno_t    (__cdecl *p_gmtime32_s)(struct tm*, __time32_t*);
 static struct tm* (__cdecl *p_gmtime64)(__time64_t*);
 static errno_t    (__cdecl *p_gmtime64_s)(struct tm*, __time64_t*);
+static FILE * (__cdecl *p__fsopen)(const char *, const char *, int);
+static FILE * (__cdecl *p__wfsopen)(const wchar_t *, const wchar_t *, int);
+static int (__cdecl *p_fclose)(FILE *);
+static int (__cdecl *p__unlink)(const char *);
 
 /* make sure we use the correct errno */
 #undef errno
@@ -315,7 +321,13 @@ static BOOL init(void)
     SET(p_fesetexceptflag, "fesetexceptflag");
     SET(p_fetestexcept, "fetestexcept");
     SET(p_feclearexcept, "feclearexcept");
+    SET(p_feholdexcept, "feholdexcept");
     SET(p_feupdateenv, "feupdateenv");
+
+    SET(p__fsopen, "_fsopen");
+    SET(p__wfsopen, "_wfsopen");
+    SET(p_fclose, "fclose");
+    SET(p__unlink, "_unlink");
 
     SET(p__clearfp, "_clearfp");
     SET(p_vsscanf, "vsscanf");
@@ -1082,6 +1094,38 @@ static void test_feenv(void)
     ret = _statusfp();
     ok(ret == (_EM_ZERODIVIDE | _EM_INVALID), "_statusfp returned %x\n", ret);
     p__clearfp();
+
+    /* feholdexcept */
+    memset(&env, 0xfe, sizeof(env));
+    ret = p_feholdexcept(&env);
+    ok(!ret, "feholdexcept returned %x\n", ret);
+    ok(env._Fe_ctl == (_EM_INEXACT|_EM_UNDERFLOW|_EM_OVERFLOW|_EM_ZERODIVIDE|_EM_INVALID),
+            "env._Fe_ctl = %lx\n", env._Fe_ctl);
+    ok(!env._Fe_stat, "env._Fe_stat = %lx\n", env._Fe_stat);
+    except = FE_ALL_EXCEPT;
+    ret = p_fesetexceptflag(&except, FE_INEXACT|FE_UNDERFLOW);
+    ok(!ret, "fesetexceptflag returned %x\n", ret);
+    except = p_fetestexcept(FE_ALL_EXCEPT);
+    ok(except == (FE_INEXACT|FE_UNDERFLOW), "expected %x, got %lx\n", FE_INEXACT|FE_UNDERFLOW, except);
+    ret = p_fesetenv(&env);
+    ok(!ret, "fesetenv returned %x\n", ret);
+    memset(&env, 0xfe, sizeof(env));
+    ret = p_fegetenv(&env);
+    ok(!ret, "feholdexcept returned %x\n", ret);
+    ok(env._Fe_ctl == (_EM_INEXACT|_EM_UNDERFLOW|_EM_OVERFLOW|_EM_ZERODIVIDE|_EM_INVALID),
+            "env._Fe_ctl = %lx\n", env._Fe_ctl);
+    ok(!env._Fe_stat, "env._Fe_stat = %lx\n", env._Fe_stat);
+
+    except = FE_ALL_EXCEPT;
+    ret = p_fesetexceptflag(&except, FE_INEXACT|FE_UNDERFLOW);
+    ok(!ret, "fesetexceptflag returned %x\n", ret);
+    memset(&env, 0xfe, sizeof(env));
+    ret = p_feholdexcept(&env);
+    ok(!ret, "feholdexcept returned %x\n", ret);
+    ok(env._Fe_ctl == (_EM_INEXACT|_EM_UNDERFLOW|_EM_OVERFLOW|_EM_ZERODIVIDE|_EM_INVALID),
+            "env._Fe_ctl = %lx\n", env._Fe_ctl);
+    ok(env._Fe_stat == (FE_INEXACT|FE_UNDERFLOW), "env._Fe_stat = %lx\n", env._Fe_stat);
+    p__clearfp();
 }
 
 static void test__wcreate_locale(void)
@@ -1791,6 +1835,57 @@ static void test_gmtime64(void)
             tm.tm_year, tm.tm_hour, tm.tm_min, tm.tm_sec);
 }
 
+static void test__fsopen(void)
+{
+    int i, ret;
+    FILE *f;
+    wchar_t wpath[MAX_PATH];
+    HANDLE h;
+    static const struct {
+        const char *loc;
+        const char *path;
+    } tests[] = {
+        { "German",   "t\xe4\xcf\xf6\xdf.txt" },
+        { "Turkish",  "t\xd0\xf0\xdd\xde\xfd\xfe.txt" },
+        { "Arabic",   "t\xca\x8c.txt" },
+        { "Japanese", "t\xb8\xd5.txt" },
+        { "Chinese",  "t\x81\x40\xfd\x71.txt" },
+    };
+
+    for(i=0; i<ARRAY_SIZE(tests); i++) {
+        if(!p_setlocale(LC_ALL, tests[i].loc)) {
+            win_skip("skipping locale %s\n", tests[i].loc);
+            continue;
+        }
+
+        memset(wpath, 0, sizeof(wpath));
+        ret = MultiByteToWideChar(CP_ACP, 0, tests[i].path, -1, wpath, MAX_PATH);
+        ok(ret, "MultiByteToWideChar failed on %s with locale %s: %lx\n",
+            tests[i].path, tests[i].loc, GetLastError());
+
+        h = CreateFileW(wpath, GENERIC_READ | GENERIC_WRITE, 0, NULL,
+                CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        if (h == INVALID_HANDLE_VALUE)
+        {
+            skip("can't create test file (%s)\n", wine_dbgstr_w(wpath));
+            continue;
+        }
+        CloseHandle(h);
+
+        f = p__fsopen(tests[i].path, "r", SH_DENYNO);
+        ok(!!f, "failed to create %s with locale %s\n", wine_dbgstr_a(tests[i].path), tests[i].loc);
+        p_fclose(f);
+
+        f = p__wfsopen(wpath, L"r", SH_DENYNO);
+        ok(!!f, "failed to open %s with locale %s\n", wine_dbgstr_w(wpath), tests[i].loc);
+        p_fclose(f);
+
+        ok(!p__unlink(tests[i].path), "failed to unlink %s with locale %s\n",
+            tests[i].path, tests[i].loc);
+    }
+    p_setlocale(LC_ALL, "C");
+}
+
 START_TEST(msvcr120)
 {
     if (!init()) return;
@@ -1816,4 +1911,5 @@ START_TEST(msvcr120)
     test_StructuredTaskCollection();
     test_strcmp();
     test_gmtime64();
+    test__fsopen();
 }

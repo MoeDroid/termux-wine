@@ -136,6 +136,7 @@ enum wined3d_cs_op
     WINED3D_CS_OP_BLT_SUB_RESOURCE,
     WINED3D_CS_OP_UPDATE_SUB_RESOURCE,
     WINED3D_CS_OP_ADD_DIRTY_TEXTURE_REGION,
+    WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE,
     WINED3D_CS_OP_CLEAR_UNORDERED_ACCESS_VIEW,
     WINED3D_CS_OP_COPY_UAV_COUNTER,
     WINED3D_CS_OP_GENERATE_MIPMAPS,
@@ -177,6 +178,15 @@ struct wined3d_cs_clear
     DWORD stencil;
     unsigned int rect_count;
     RECT rects[1];
+};
+
+struct wined3d_cs_clear_sysmem_texture
+{
+    enum wined3d_cs_op opcode;
+    struct wined3d_texture *texture;
+    unsigned int sub_resource_idx;
+    struct wined3d_color color;
+    RECT rect;
 };
 
 struct wined3d_cs_dispatch
@@ -612,6 +622,7 @@ static const char *debug_cs_op(enum wined3d_cs_op op)
         WINED3D_TO_STR(WINED3D_CS_OP_BLT_SUB_RESOURCE);
         WINED3D_TO_STR(WINED3D_CS_OP_UPDATE_SUB_RESOURCE);
         WINED3D_TO_STR(WINED3D_CS_OP_ADD_DIRTY_TEXTURE_REGION);
+        WINED3D_TO_STR(WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE);
         WINED3D_TO_STR(WINED3D_CS_OP_CLEAR_UNORDERED_ACCESS_VIEW);
         WINED3D_TO_STR(WINED3D_CS_OP_COPY_UAV_COUNTER);
         WINED3D_TO_STR(WINED3D_CS_OP_GENERATE_MIPMAPS);
@@ -868,6 +879,70 @@ void wined3d_device_context_emit_clear_rendertarget_view(struct wined3d_device_c
         wined3d_device_context_finish(context, WINED3D_CS_QUEUE_DEFAULT);
 }
 
+static void wined3d_cs_exec_clear_sysmem_texture(struct wined3d_cs *cs, const void *data)
+{
+    const struct wined3d_cs_clear_sysmem_texture *op = data;
+    struct wined3d_box box;
+
+    box.left = op->rect.left;
+    box.right = op->rect.right;
+    box.top = op->rect.top;
+    box.bottom = op->rect.bottom;
+    box.front = 0;
+    box.back = 1;
+    cpu_blitter_clear_texture(op->texture, op->sub_resource_idx, &box, &op->color);
+}
+
+HRESULT CDECL wined3d_device_context_clear_sysmem_texture(struct wined3d_device_context *context,
+        struct wined3d_texture *texture, unsigned int sub_resource_idx, const RECT *rect,
+        unsigned int flags, const struct wined3d_color *color)
+{
+    struct wined3d_cs_clear_sysmem_texture *op;
+
+    TRACE("context %p, texture %p, sub_resource_idx %u, rect %s, flags %#x, color %s.\n",
+            context, texture, sub_resource_idx, wine_dbgstr_rect(rect), flags, debug_color(color));
+
+    if (rect)
+    {
+        struct wined3d_box b = {rect->left, rect->top, rect->right, rect->bottom, 0, 1};
+        HRESULT hr;
+
+        if (FAILED(hr = wined3d_resource_check_box_dimensions(&texture->resource, sub_resource_idx, &b)))
+            return hr;
+    }
+
+    wined3d_device_context_lock(context);
+
+    op = wined3d_device_context_require_space(context, sizeof(*op), WINED3D_CS_QUEUE_DEFAULT);
+    op->opcode = WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE;
+    op->texture = texture;
+    op->sub_resource_idx = sub_resource_idx;
+    op->color = *color;
+
+    if (rect)
+    {
+        op->rect = *rect;
+    }
+    else
+    {
+        unsigned int level_idx = sub_resource_idx % texture->level_count;
+
+        op->rect.left = 0;
+        op->rect.top = 0;
+        op->rect.right = wined3d_texture_get_level_width(texture, level_idx);
+        op->rect.bottom = wined3d_texture_get_level_height(texture, level_idx);
+    }
+
+    wined3d_device_context_reference_resource(context, &texture->resource);
+
+    wined3d_device_context_submit(context, WINED3D_CS_QUEUE_DEFAULT);
+    if (flags & WINED3DCLEAR_SYNCHRONOUS)
+        wined3d_device_context_finish(context, WINED3D_CS_QUEUE_DEFAULT);
+
+    wined3d_device_context_unlock(context);
+    return S_OK;
+}
+
 static void reference_shader_resources(struct wined3d_device_context *context, unsigned int shader_mask)
 {
     const struct wined3d_state *state = context->state;
@@ -1035,7 +1110,10 @@ static void wined3d_cs_exec_draw(struct wined3d_cs *cs, const void *data)
         if ((geometry_shader = state->shader[WINED3D_SHADER_TYPE_GEOMETRY]) && !geometry_shader->function)
             device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_GEOMETRY));
         if (state->primitive_type == WINED3D_PT_POINTLIST || op->primitive_type == WINED3D_PT_POINTLIST)
-            device_invalidate_state(cs->c.device, STATE_POINT_ENABLE);
+        {
+            device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX));
+            device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
+        }
         state->primitive_type = op->primitive_type;
         for (i = 0; i < device->context_count; ++i)
             device->contexts[i]->update_primitive_type = 1;
@@ -1519,59 +1597,25 @@ static void wined3d_cs_exec_set_texture(struct wined3d_cs *cs, const void *data)
     const struct wined3d_d3d_info *d3d_info = &cs->c.device->adapter->d3d_info;
     const struct wined3d_cs_set_texture *op = data;
     struct wined3d_shader_resource_view *prev;
-    BOOL old_use_color_key = FALSE, new_use_color_key = FALSE;
 
     prev = cs->state.shader_resource_view[op->shader_type][op->bind_index];
     cs->state.shader_resource_view[op->shader_type][op->bind_index] = op->view;
 
     if (op->view)
     {
-        struct wined3d_texture *texture = texture_from_resource(op->view->resource);
-
         ++op->view->resource->bind_count;
 
         if (op->shader_type == WINED3D_SHADER_TYPE_PIXEL)
         {
             if (texture_binding_might_invalidate_ps(op->view, prev, d3d_info))
                 device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
-
-            if (!prev && op->bind_index < d3d_info->ffp_fragment_caps.max_blend_stages)
-            {
-                /* The source arguments for color and alpha ops have different
-                 * meanings when a NULL texture is bound, so the COLOR_OP and
-                 * ALPHA_OP have to be dirtified. */
-                device_invalidate_state(cs->c.device, STATE_TEXTURESTAGE(op->bind_index, WINED3D_TSS_COLOR_OP));
-                device_invalidate_state(cs->c.device, STATE_TEXTURESTAGE(op->bind_index, WINED3D_TSS_ALPHA_OP));
-            }
-
-            if (!op->bind_index && texture->async.color_key_flags & WINED3D_CKEY_SRC_BLT)
-                new_use_color_key = TRUE;
         }
     }
 
     if (prev)
-    {
-        struct wined3d_texture *prev_texture = texture_from_resource(prev->resource);
-
         --prev->resource->bind_count;
 
-        if (op->shader_type == WINED3D_SHADER_TYPE_PIXEL)
-        {
-            if (!op->view && op->bind_index < d3d_info->ffp_fragment_caps.max_blend_stages)
-            {
-                device_invalidate_state(cs->c.device, STATE_TEXTURESTAGE(op->bind_index, WINED3D_TSS_COLOR_OP));
-                device_invalidate_state(cs->c.device, STATE_TEXTURESTAGE(op->bind_index, WINED3D_TSS_ALPHA_OP));
-            }
-
-            if (!op->bind_index && prev_texture->async.color_key_flags & WINED3D_CKEY_SRC_BLT)
-                old_use_color_key = TRUE;
-        }
-    }
-
     device_invalidate_state(cs->c.device, STATE_GRAPHICS_SHADER_RESOURCE_BINDING);
-
-    if (new_use_color_key != old_use_color_key)
-        device_invalidate_state(cs->c.device, STATE_RENDER(WINED3D_RS_COLORKEYENABLE));
 }
 
 void wined3d_device_context_emit_set_texture(struct wined3d_device_context *context,
@@ -1886,8 +1930,11 @@ static void wined3d_cs_exec_set_transform(struct wined3d_cs *cs, const void *dat
     const struct wined3d_cs_set_transform *op = data;
 
     cs->state.transforms[op->state] = op->matrix;
-    if (op->state < WINED3D_TS_WORLD_MATRIX(cs->c.device->adapter->d3d_info.limits.ffp_vertex_blend_matrices))
-        device_invalidate_state(cs->c.device, STATE_TRANSFORM(op->state));
+    /* Fog behaviour depends on the projection matrix. */
+    if (op->state == WINED3D_TS_PROJECTION
+            && cs->state.render_states[WINED3D_RS_FOGENABLE]
+            && cs->state.render_states[WINED3D_RS_FOGTABLEMODE] != WINED3D_FOG_NONE)
+        device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_VERTEX));
 }
 
 void wined3d_device_context_emit_set_transform(struct wined3d_device_context *context,
@@ -1947,7 +1994,7 @@ static void wined3d_cs_exec_set_color_key(struct wined3d_cs *cs, const void *dat
                 if (texture == wined3d_state_get_ffp_texture(&cs->state, 0))
                 {
                     if (!(texture->async.color_key_flags & WINED3D_CKEY_SRC_BLT))
-                        device_invalidate_state(cs->c.device, STATE_RENDER(WINED3D_RS_COLORKEYENABLE));
+                        device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
                 }
 
                 texture->async.src_blt_color_key = op->color_key;
@@ -1975,7 +2022,7 @@ static void wined3d_cs_exec_set_color_key(struct wined3d_cs *cs, const void *dat
             case WINED3D_CKEY_SRC_BLT:
                 if (texture == wined3d_state_get_ffp_texture(&cs->state, 0)
                         && texture->async.color_key_flags & WINED3D_CKEY_SRC_BLT)
-                    device_invalidate_state(cs->c.device, STATE_RENDER(WINED3D_RS_COLORKEYENABLE));
+                    device_invalidate_state(cs->c.device, STATE_SHADER(WINED3D_SHADER_TYPE_PIXEL));
 
                 texture->async.color_key_flags &= ~WINED3D_CKEY_SRC_BLT;
                 break;
@@ -2029,12 +2076,6 @@ static void wined3d_cs_exec_set_light(struct wined3d_cs *cs, const void *data)
         rb_put(&cs->state.light_state.lights_tree, (void *)(ULONG_PTR)light_idx, &light_info->entry);
     }
 
-    if (light_info->glIndex != -1)
-    {
-        if (light_info->OriginalParms.type != op->light.OriginalParms.type)
-            device_invalidate_state(cs->c.device, STATE_LIGHT_TYPE);
-    }
-
     light_info->OriginalParms = op->light.OriginalParms;
     light_info->constants = op->light.constants;
 }
@@ -2063,8 +2104,7 @@ static void wined3d_cs_exec_set_light_enable(struct wined3d_cs *cs, const void *
         return;
     }
 
-    if (wined3d_light_state_enable_light(&cs->state.light_state, &device->adapter->d3d_info, light_info, op->enable))
-        device_invalidate_state(device, STATE_LIGHT_TYPE);
+    wined3d_light_state_enable_light(&cs->state.light_state, &device->adapter->d3d_info, light_info, op->enable);
 }
 
 void wined3d_device_context_emit_set_light_enable(struct wined3d_device_context *context, unsigned int idx, BOOL enable)
@@ -2158,15 +2198,23 @@ static void wined3d_cs_exec_push_constants(struct wined3d_cs *cs, const void *da
 {
     const struct wined3d_cs_push_constants *op = data;
     struct wined3d_device *device = cs->c.device;
+    unsigned int ffp_start_idx, ffp_end_idx;
     unsigned int context_count, i;
 
     /* The constant buffers were already updated; this op is just to mark the
      * constants as invalid in the device state. */
 
+    ffp_start_idx = op->start_idx / sizeof(struct wined3d_vec4);
+    ffp_end_idx = (op->start_idx + op->count + sizeof(struct wined3d_vec4)) / sizeof(struct wined3d_vec4);
+
     if (op->type == WINED3D_PUSH_CONSTANTS_VS_F)
         device->shader_backend->shader_update_float_vertex_constants(device, op->start_idx, op->count);
     else if (op->type == WINED3D_PUSH_CONSTANTS_PS_F)
         device->shader_backend->shader_update_float_pixel_constants(device, op->start_idx, op->count);
+    else if (op->type == WINED3D_PUSH_CONSTANTS_VS_FFP)
+        device->shader_backend->shader_update_float_vertex_constants(device, ffp_start_idx, ffp_end_idx - ffp_start_idx);
+    else if (op->type == WINED3D_PUSH_CONSTANTS_PS_FFP)
+        device->shader_backend->shader_update_float_pixel_constants(device, ffp_start_idx, ffp_end_idx - ffp_start_idx);
 
     for (i = 0, context_count = device->context_count; i < context_count; ++i)
         device->contexts[i]->constant_update_mask |= op->update_mask;
@@ -2944,6 +2992,7 @@ static void (* const wined3d_cs_op_handlers[])(struct wined3d_cs *cs, const void
     /* WINED3D_CS_OP_BLT_SUB_RESOURCE            */ wined3d_cs_exec_blt_sub_resource,
     /* WINED3D_CS_OP_UPDATE_SUB_RESOURCE         */ wined3d_cs_exec_update_sub_resource,
     /* WINED3D_CS_OP_ADD_DIRTY_TEXTURE_REGION    */ wined3d_cs_exec_add_dirty_texture_region,
+    /* WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE        */ wined3d_cs_exec_clear_sysmem_texture,
     /* WINED3D_CS_OP_CLEAR_UNORDERED_ACCESS_VIEW */ wined3d_cs_exec_clear_unordered_access_view,
     /* WINED3D_CS_OP_COPY_UAV_COUNTER            */ wined3d_cs_exec_copy_uav_counter,
     /* WINED3D_CS_OP_GENERATE_MIPMAPS            */ wined3d_cs_exec_generate_mipmaps,
@@ -3765,6 +3814,14 @@ static void wined3d_cs_packet_decref_objects(const struct wined3d_cs_packet *pac
             break;
         }
 
+        case WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE:
+        {
+            struct wined3d_cs_clear_sysmem_texture *op = (struct wined3d_cs_clear_sysmem_texture *)packet->data;
+
+            wined3d_texture_decref(op->texture);
+            break;
+        }
+
         case WINED3D_CS_OP_DISPATCH:
         {
             struct wined3d_cs_dispatch *op = (struct wined3d_cs_dispatch *)packet->data;
@@ -4003,6 +4060,14 @@ static void wined3d_cs_packet_incref_objects(struct wined3d_cs_packet *packet)
             }
             if (op->fb.depth_stencil)
                 wined3d_rendertarget_view_incref(op->fb.depth_stencil);
+            break;
+        }
+
+        case WINED3D_CS_OP_CLEAR_SYSMEM_TEXTURE:
+        {
+            struct wined3d_cs_clear_sysmem_texture *op = (struct wined3d_cs_clear_sysmem_texture *)packet->data;
+
+            wined3d_texture_incref(op->texture);
             break;
         }
 

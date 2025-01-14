@@ -44,9 +44,6 @@
 #include "ntstatus.h"
 #define WIN32_NO_STATUS
 
-#define VK_NO_PROTOTYPES
-#define WINE_VK_HOST
-
 #include "x11drv.h"
 #include "winreg.h"
 #include "xcomposite.h"
@@ -76,7 +73,6 @@ BOOL use_primary_selection = FALSE;
 BOOL use_system_cursors = TRUE;
 BOOL grab_fullscreen = FALSE;
 BOOL managed_mode = TRUE;
-BOOL decorated_mode = TRUE;
 BOOL private_color_map = FALSE;
 int primary_monitor = 0;
 BOOL client_side_graphics = TRUE;
@@ -86,7 +82,6 @@ int copy_default_colors = 128;
 int alloc_system_colors = 256;
 int xrender_error_base = 0;
 char *process_name = NULL;
-WNDPROC client_foreign_window_proc = NULL;
 
 static x11drv_error_callback err_callback;   /* current callback for error */
 static Display *err_callback_display;        /* display callback is set for */
@@ -454,9 +449,6 @@ static void setup_options(void)
     if (!get_config_key( hkey, appkey, "Managed", buffer, sizeof(buffer) ))
         managed_mode = IS_OPTION_TRUE( buffer[0] );
 
-    if (!get_config_key( hkey, appkey, "Decorated", buffer, sizeof(buffer) ))
-        decorated_mode = IS_OPTION_TRUE( buffer[0] );
-
     if (!get_config_key( hkey, appkey, "UseXVidMode", buffer, sizeof(buffer) ))
         usexvidmode = IS_OPTION_TRUE( buffer[0] );
 
@@ -625,7 +617,6 @@ static void init_visuals( Display *display, int screen )
  */
 static NTSTATUS x11drv_init( void *arg )
 {
-    struct init_params *params = arg;
     Display *display;
     void *libx11 = dlopen( SONAME_LIBX11, RTLD_NOW|RTLD_GLOBAL );
 
@@ -646,8 +637,6 @@ static NTSTATUS x11drv_init( void *arg )
 
     if (!XInitThreads()) ERR( "XInitThreads failed, trouble ahead\n" );
     if (!(display = XOpenDisplay( NULL ))) return STATUS_UNSUCCESSFUL;
-
-    client_foreign_window_proc = params->foreign_window_proc;
 
     fcntl( ConnectionNumber(display), F_SETFD, 1 ); /* set close on exec flag */
     root_window = DefaultRootWindow( display );
@@ -682,7 +671,6 @@ static NTSTATUS x11drv_init( void *arg )
     if (use_xim) use_xim = xim_init( input_style );
 
     init_user_driver();
-    X11DRV_DisplayDevices_RegisterEventHandlers();
     return STATUS_SUCCESS;
 }
 
@@ -698,6 +686,7 @@ void X11DRV_ThreadDetach(void)
     {
         if (data->xim) XCloseIM( data->xim );
         if (data->font_set) XFreeFontSet( data->display, data->font_set );
+        if (data->net_supported) XFree( data->net_supported );
         XSync( gdi_display, False ); /* make sure XReparentWindow requests have completed before closing the thread display */
         XCloseDisplay( data->display );
         free( data );
@@ -762,8 +751,10 @@ struct x11drv_thread_data *x11drv_init_thread_data(void)
     set_queue_display_fd( data->display );
     NtUserGetThreadInfo()->driver_data = (UINT_PTR)data;
 
+    XSelectInput( data->display, DefaultRootWindow( data->display ), PropertyChangeMask );
     if (use_xim) xim_thread_attach( data );
     x11drv_xinput2_init( data );
+    net_supported_init( data );
 
     return data;
 }
@@ -805,14 +796,6 @@ BOOL X11DRV_SystemParametersInfo( UINT action, UINT int_param, void *ptr_param, 
     return FALSE;  /* let user32 handle it */
 }
 
-NTSTATUS x11drv_client_func( enum x11drv_client_funcs id, const void *params, ULONG size )
-{
-    void *ret_ptr;
-    ULONG ret_len;
-    return KeUserModeCallback( id, params, size, &ret_ptr, &ret_len );
-}
-
-
 const unixlib_entry_t __wine_unix_call_funcs[] =
 {
     x11drv_init,
@@ -827,24 +810,6 @@ C_ASSERT( ARRAYSIZE(__wine_unix_call_funcs) == unix_funcs_count );
 
 
 #ifdef _WIN64
-
-static NTSTATUS x11drv_wow64_init( void *arg )
-{
-    struct
-    {
-        ULONG foreign_window_proc;
-    } *params32 = arg;
-    struct init_params params;
-
-    params.foreign_window_proc = UlongToPtr( params32->foreign_window_proc );
-    return x11drv_init( &params );
-}
-
-static NTSTATUS x11drv_wow64_tablet_get_packet( void *arg )
-{
-    FIXME( "%p\n", arg );
-    return 0;
-}
 
 static NTSTATUS x11drv_wow64_tablet_info( void *arg )
 {
@@ -864,9 +829,9 @@ static NTSTATUS x11drv_wow64_tablet_info( void *arg )
 
 const unixlib_entry_t __wine_unix_call_wow64_funcs[] =
 {
-    x11drv_wow64_init,
+    x11drv_init,
     x11drv_tablet_attach_queue,
-    x11drv_wow64_tablet_get_packet,
+    x11drv_tablet_get_packet,
     x11drv_wow64_tablet_info,
     x11drv_tablet_load_info,
 };

@@ -220,7 +220,7 @@ static const struct object_ops thread_input_ops =
 /* pointer to input structure of foreground thread */
 static unsigned int last_input_time;
 
-static cursor_pos_t cursor_history[64];
+static struct cursor_pos cursor_history[64];
 static unsigned int cursor_history_latest;
 
 static void queue_hardware_message( struct desktop *desktop, struct message *msg, int always_queue );
@@ -360,10 +360,9 @@ static void sync_input_keystate( struct thread_input *input )
 {
     const input_shm_t *input_shm = input->shared;
     const desktop_shm_t *desktop_shm;
-    struct desktop *desktop;
     int i;
 
-    if (!(desktop = input->desktop) || input_shm->keystate_lock) return;
+    if (!input->desktop || input_shm->keystate_lock) return;
     desktop_shm = input->desktop->shared;
 
     SHARED_WRITE_BEGIN( input_shm, input_shm_t )
@@ -472,8 +471,8 @@ static struct message *alloc_hardware_message( lparam_t info, struct hw_msg_sour
 static int is_cursor_clipped( struct desktop *desktop )
 {
     const desktop_shm_t *desktop_shm = desktop->shared;
-    rectangle_t top_rect, clip_rect = desktop_shm->cursor.clip;
-    get_top_window_rectangle( desktop, &top_rect );
+    struct rectangle top_rect, clip_rect = desktop_shm->cursor.clip;
+    get_virtual_screen_rect( desktop, &top_rect, 1 );
     return !is_rect_equal( &clip_rect, &top_rect );
 }
 
@@ -585,6 +584,15 @@ static void set_cursor_pos( struct desktop *desktop, int x, int y )
     queue_hardware_message( desktop, msg, 1 );
 }
 
+/* sync cursor position after window change */
+void update_cursor_pos( struct desktop *desktop )
+{
+    const desktop_shm_t *desktop_shm;
+
+    desktop_shm = desktop->shared;
+    set_cursor_pos( desktop, desktop_shm->cursor.x, desktop_shm->cursor.y );
+}
+
 /* retrieve default position and time for synthesized messages */
 static void get_message_defaults( struct msg_queue *queue, int *x, int *y, unsigned int *time )
 {
@@ -597,14 +605,14 @@ static void get_message_defaults( struct msg_queue *queue, int *x, int *y, unsig
 }
 
 /* set the cursor clip rectangle */
-void set_clip_rectangle( struct desktop *desktop, const rectangle_t *rect, unsigned int flags, int reset )
+void set_clip_rectangle( struct desktop *desktop, const struct rectangle *rect, unsigned int flags, int reset )
 {
     const desktop_shm_t *desktop_shm = desktop->shared;
-    rectangle_t top_rect, new_rect;
+    struct rectangle top_rect, new_rect;
     unsigned int old_flags;
     int x, y;
 
-    get_top_window_rectangle( desktop, &top_rect );
+    get_virtual_screen_rect( desktop, &top_rect, 1 );
     if (rect)
     {
         new_rect = *rect;
@@ -800,6 +808,7 @@ static int merge_mousemove( struct thread_input *input, const struct message *ms
     for (ptr = list_tail( &input->msg_list ); ptr; ptr = list_prev( &input->msg_list, ptr ))
     {
         prev = LIST_ENTRY( ptr, struct message, entry );
+        if (prev->msg >> 31) continue; /* ignore internal messages */
         if (prev->msg != WM_INPUT) break;
     }
     if (!ptr) return 0;
@@ -1857,7 +1866,7 @@ static struct rawinput_device *find_rawinput_device( struct process *process, un
 
 static void prepend_cursor_history( int x, int y, unsigned int time, lparam_t info )
 {
-    cursor_pos_t *pos = &cursor_history[--cursor_history_latest % ARRAY_SIZE(cursor_history)];
+    struct cursor_pos *pos = &cursor_history[--cursor_history_latest % ARRAY_SIZE(cursor_history)];
 
     pos->x = x;
     pos->y = y;
@@ -1931,6 +1940,7 @@ static void queue_hardware_message( struct desktop *desktop, struct message *msg
     {
         if (input && !(flags & RIDEV_NOLEGACY)) update_thread_input_key_state( input, msg->msg, msg->wparam );
         free_message( msg );
+        if (thread) release_object( thread );
         return;
     }
 
@@ -2097,7 +2107,7 @@ static void rawkeyboard_init( struct rawinput *rawinput, RAWKEYBOARD *keyboard, 
     keyboard->ExtraInformation = info;
 }
 
-static void rawhid_init( struct rawinput *rawinput, RAWHID *hid, const hw_input_t *input )
+static void rawhid_init( struct rawinput *rawinput, RAWHID *hid, const union hw_input *input )
 {
     rawinput->type   = RIM_TYPEHID;
     rawinput->device = input->hw.hid.device;
@@ -2135,6 +2145,7 @@ static void queue_rawinput_message( struct desktop *desktop, struct process *pro
     data_size_t report_size = 0, data_size = 0;
     int wparam = RIM_INPUT;
     lparam_t info = 0;
+    char *ptr;
 
     if (raw_msg->rawinput.type == RIM_TYPEMOUSE)
     {
@@ -2172,8 +2183,8 @@ static void queue_rawinput_message( struct desktop *desktop, struct process *pro
     msg_data = msg->data;
     msg_data->flags = raw_msg->flags;
     msg_data->rawinput = raw_msg->rawinput;
-    memcpy( msg_data + 1, &raw_msg->data, data_size );
-    if (report_size) memcpy( (char *)(msg_data + 1) + data_size, raw_msg->hid_report, report_size );
+    ptr = mem_append( msg_data + 1, &raw_msg->data, data_size );
+    mem_append( ptr, raw_msg->hid_report, report_size );
 
     if (raw_msg->message == WM_INPUT_DEVICE_CHANGE && raw_msg->rawinput.type == RIM_TYPEHID)
     {
@@ -2193,7 +2204,7 @@ static void dispatch_rawinput_message( struct desktop *desktop, struct rawinput_
 }
 
 /* queue a hardware message for a mouse event */
-static int queue_mouse_message( struct desktop *desktop, user_handle_t win, const hw_input_t *input,
+static int queue_mouse_message( struct desktop *desktop, user_handle_t win, const union hw_input *input,
                                 unsigned int origin, struct msg_queue *sender )
 {
     const desktop_shm_t *desktop_shm = desktop->shared;
@@ -2299,7 +2310,7 @@ static int queue_mouse_message( struct desktop *desktop, user_handle_t win, cons
     return wait;
 }
 
-static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, const hw_input_t *input,
+static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, const union hw_input *input,
                                    unsigned int origin, struct msg_queue *sender, int repeat );
 
 static void key_repeat_timeout( void *private )
@@ -2319,7 +2330,7 @@ static void stop_key_repeat( struct desktop *desktop )
 }
 
 /* queue a hardware message for a keyboard event */
-static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, const hw_input_t *input,
+static int queue_keyboard_message( struct desktop *desktop, user_handle_t win, const union hw_input *input,
                                    unsigned int origin, struct msg_queue *sender, int repeat )
 {
     const desktop_shm_t *desktop_shm = desktop->shared;
@@ -2492,7 +2503,7 @@ struct pointer
     struct desktop *desktop;
     user_handle_t win;
     int primary;
-    hw_input_t input;
+    union hw_input input;
 };
 
 static void queue_pointer_message( struct pointer *pointer, int repeated );
@@ -2514,15 +2525,15 @@ static void queue_pointer_message( struct pointer *pointer, int repeated )
     struct hw_msg_source source = { IMDT_UNAVAILABLE, IMDT_TOUCH };
     struct desktop *desktop = pointer->desktop;
     const desktop_shm_t *desktop_shm = desktop->shared;
-    const hw_input_t *input = &pointer->input;
+    const union hw_input *input = &pointer->input;
     unsigned int i, wparam = input->hw.wparam;
     timeout_t time = get_tick_count();
     user_handle_t win = pointer->win;
-    rectangle_t top_rect;
+    struct rectangle top_rect;
     struct message *msg;
     int x, y;
 
-    get_top_window_rectangle( desktop, &top_rect );
+    get_virtual_screen_rect( desktop, &top_rect, 0 );
     x = LOWORD(input->hw.lparam) * (top_rect.right - top_rect.left) / 65535;
     y = HIWORD(input->hw.lparam) * (top_rect.bottom - top_rect.top) / 65535;
 
@@ -2590,7 +2601,7 @@ static struct pointer *find_pointer_from_id( struct desktop *desktop, unsigned i
 
 /* queue a hardware message for a custom type of event */
 static void queue_custom_hardware_message( struct desktop *desktop, user_handle_t win,
-                                           unsigned int origin, const hw_input_t *input )
+                                           unsigned int origin, const union hw_input *input )
 {
     const desktop_shm_t *desktop_shm = desktop->shared;
     struct hw_msg_source source = { IMDT_UNAVAILABLE, origin };
@@ -4025,7 +4036,7 @@ DECL_HANDLER(set_cursor)
 /* Get the history of the 64 last cursor positions */
 DECL_HANDLER(get_cursor_history)
 {
-    cursor_pos_t *pos;
+    struct cursor_pos *pos;
     unsigned int i, count = min( 64, get_reply_max_size() / sizeof(*pos) );
 
     if ((pos = set_reply_data_size( count * sizeof(*pos) )))

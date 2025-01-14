@@ -58,6 +58,8 @@ SOURCES = \
 	bits5_0.idl \
 	bitsmsg.h \
 	bluetoothapis.h \
+	bthdef.h \
+	bthioctl.h \
 	bthsdpdef.h \
 	cderr.h \
 	cdosys.idl \
@@ -269,6 +271,7 @@ SOURCES = \
 	dplobby.h \
 	dplobby8.h \
 	dpnathlp.h \
+	dragdropinterop.idl \
 	driverspecs.h \
 	drmexternals.idl \
 	dsclient.h \
@@ -303,6 +306,7 @@ SOURCES = \
 	dxgitype.idl \
 	dxva.h \
 	dxva2api.idl \
+	dxvahd.idl \
 	dyngraph.idl \
 	endpointvolume.idl \
 	errorrep.h \
@@ -679,10 +683,14 @@ SOURCES = \
 	rpcsal.h \
 	rstbas.idl \
 	rstchg.idl \
+	rstfnd.idl \
+	rstidn.idl \
 	rstinf.idl \
 	rstloc.idl \
 	rstnot.idl \
+	rstscr.idl \
 	rstupd.idl \
+	rstxsc.idl \
 	rtlsupportapi.h \
 	rtutils.h \
 	rtworkq.idl \
@@ -709,6 +717,7 @@ SOURCES = \
 	shdispid.h \
 	shellapi.h \
 	shellscalingapi.h \
+	sherrors.h \
 	shimgdata.idl \
 	shldisp.idl \
 	shlguid.h \
@@ -807,6 +816,7 @@ SOURCES = \
 	wdbgexts.h \
 	weakreference.idl \
 	webservices.h \
+	websocket.h \
 	werapi.h \
 	wfext.h \
 	wia.h \
@@ -829,8 +839,12 @@ SOURCES = \
 	windows.applicationmodel.activation.idl \
 	windows.applicationmodel.background.idl \
 	windows.applicationmodel.core.idl \
+	windows.applicationmodel.datatransfer.dragdrop.core.idl \
+	windows.applicationmodel.datatransfer.dragdrop.idl \
+	windows.applicationmodel.datatransfer.idl \
 	windows.applicationmodel.idl \
 	windows.data.json.idl \
+	windows.data.xml.dom.idl \
 	windows.devices.bluetooth.idl \
 	windows.devices.enumeration.idl \
 	windows.devices.geolocation.idl \
@@ -872,9 +886,11 @@ SOURCES = \
 	windows.perception.spatial.idl \
 	windows.perception.spatial.surfaces.idl \
 	windows.security.authentication.onlineid.idl \
+	windows.security.authorization.appcapabilityaccess.idl \
 	windows.security.credentials.idl \
 	windows.security.credentials.ui.idl \
 	windows.security.cryptography.idl \
+	windows.security.enterprisedata.idl \
 	windows.security.exchangeactivesyncprovisioning.idl \
 	windows.security.isolation.idl \
 	windows.storage.fileproperties.idl \
@@ -892,8 +908,11 @@ SOURCES = \
 	windows.ui.core.idl \
 	windows.ui.idl \
 	windows.ui.input.idl \
+	windows.ui.notifications.idl \
 	windows.ui.viewmanagement.idl \
 	windows.ui.xaml.hosting.desktopwindowxamlsource.idl \
+	windows.ui.xaml.idl \
+	windows.ui.xaml.interop.idl \
 	windowscontracts.idl \
 	windowsx.h \
 	wine/afd.h \
@@ -939,6 +958,7 @@ SOURCES = \
 	wine/windef16.h \
 	wine/wine_common_ver.rc \
 	wine/wined3d.h \
+	wine/winedmo.h \
 	wine/winedxgi.idl \
 	wine/wingdi16.h \
 	wine/winnet16.h \

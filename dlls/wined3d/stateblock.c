@@ -6,7 +6,7 @@
  * Copyright 2005 Oliver Stieber
  * Copyright 2007 Stefan Dösinger for CodeWeavers
  * Copyright 2009 Henri Verbeet for CodeWeavers
- * Copyright 2019,2020,2022 Zebediah Figura for CodeWeavers
+ * Copyright 2019,2020,2022-2024 Elizabeth Figura for CodeWeavers
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -64,6 +64,10 @@ struct wined3d_saved_states
     uint32_t texture_matrices : 1;
     uint32_t modelview_matrices : 1;
     uint32_t point_scale : 1;
+    uint32_t ffp_vs_settings : 1;
+    uint32_t ffp_ps_settings : 1;
+    uint32_t rasterizer_state : 1;
+    uint32_t position_transformed : 1;
 };
 
 struct stage_state
@@ -303,6 +307,31 @@ static void stateblock_savedstates_set_all(struct wined3d_saved_states *states, 
 
     memset(states->ps_consts_f, 0xffu, sizeof(states->ps_consts_f));
     memset(states->vs_consts_f, 0xffu, sizeof(states->vs_consts_f));
+}
+
+void CDECL wined3d_stateblock_primary_dirtify_all_states(struct wined3d_device *device, struct wined3d_stateblock *stateblock)
+{
+    struct rb_tree *lights_tree = &stateblock->stateblock_state.light_state->lights_tree;
+    const struct wined3d_d3d_info *d3d_info = &device->adapter->d3d_info;
+    struct wined3d_saved_states *states = &stateblock->changed;
+    struct wined3d_light_info *light;
+
+    stateblock_savedstates_set_all(states, d3d_info->limits.vs_uniform_count, d3d_info->limits.ps_uniform_count);
+    states->ffp_ps_constants = 1;
+    states->texture_matrices = 1;
+    states->modelview_matrices = 1;
+    states->point_scale = 1;
+    states->ffp_vs_settings = 1;
+    states->ffp_ps_settings = 1;
+    states->rasterizer_state = 1;
+    states->position_transformed = 1;
+
+    list_init(&stateblock->changed.changed_lights);
+    RB_FOR_EACH_ENTRY(light, lights_tree, struct wined3d_light_info, entry)
+    {
+        light->changed = true;
+        list_add_tail(&stateblock->changed.changed_lights, &light->changed_entry);
+    }
 }
 
 static void stateblock_savedstates_set_pixel(struct wined3d_saved_states *states, const DWORD num_constants)
@@ -1296,6 +1325,7 @@ void CDECL wined3d_stateblock_set_vertex_shader(struct wined3d_stateblock *state
         wined3d_shader_decref(stateblock->stateblock_state.vs);
     stateblock->stateblock_state.vs = shader;
     stateblock->changed.vertexShader = TRUE;
+    stateblock->changed.ffp_vs_settings = 1;
 }
 
 static void wined3d_bitmap_set_bits(uint32_t *bitmap, unsigned int start, unsigned int count)
@@ -1436,6 +1466,7 @@ void CDECL wined3d_stateblock_set_pixel_shader(struct wined3d_stateblock *stateb
         wined3d_shader_decref(stateblock->stateblock_state.ps);
     stateblock->stateblock_state.ps = shader;
     stateblock->changed.pixelShader = TRUE;
+    stateblock->changed.ffp_ps_settings = 1;
 }
 
 HRESULT CDECL wined3d_stateblock_set_ps_consts_f(struct wined3d_stateblock *stateblock,
@@ -1539,18 +1570,53 @@ HRESULT CDECL wined3d_stateblock_get_ps_consts_b(struct wined3d_stateblock *stat
 void CDECL wined3d_stateblock_set_vertex_declaration(struct wined3d_stateblock *stateblock,
         struct wined3d_vertex_declaration *declaration)
 {
+    struct wined3d_vertex_declaration *prev = stateblock->stateblock_state.vertex_declaration;
+
     TRACE("stateblock %p, declaration %p.\n", stateblock, declaration);
 
     if (declaration)
         wined3d_vertex_declaration_incref(declaration);
-    if (stateblock->stateblock_state.vertex_declaration)
-        wined3d_vertex_declaration_decref(stateblock->stateblock_state.vertex_declaration);
+    if (prev)
+        wined3d_vertex_declaration_decref(prev);
     stateblock->stateblock_state.vertex_declaration = declaration;
     stateblock->changed.vertexDecl = TRUE;
     /* Texture matrices depend on the format of the TEXCOORD attributes. */
     /* FIXME: They also depend on whether the draw is pretransformed,
      * but that should go away. */
     stateblock->changed.texture_matrices = TRUE;
+
+    if (declaration && prev)
+    {
+        if (!stateblock->stateblock_state.vs)
+        {
+            /* Because of settings->texcoords, we have to regenerate the vertex
+             * shader on a vdecl change if there aren't enough varyings to just
+             * always output all the texture coordinates.
+             *
+             * Likewise, we have to invalidate the shader when using per-vertex
+             * colours and diffuse/specular attribute presence changes, or when
+             * normal presence changes. */
+            if (!stateblock->device->adapter->d3d_info.full_ffp_varyings || declaration->diffuse != prev->diffuse
+                    || (stateblock->stateblock_state.rs[WINED3D_RS_COLORVERTEX] && declaration->specular != prev->specular)
+                    || declaration->normal != prev->normal || declaration->point_size != prev->point_size)
+                stateblock->changed.ffp_vs_settings = 1;
+        }
+
+        if (declaration->position_transformed != prev->position_transformed)
+        {
+            /* We reuse the projection matrix to undo the translation between
+             * clip coordinates and pixel coordinates, so we need to invalidate
+             * it here. */
+            stateblock->changed.ffp_vs_settings = 1;
+            stateblock->changed.position_transformed = 1;
+            stateblock->changed.transforms = 1;
+        }
+    }
+    else
+    {
+        stateblock->changed.position_transformed = 1;
+        stateblock->changed.ffp_vs_settings = 1;
+    }
 }
 
 void CDECL wined3d_stateblock_set_render_state(struct wined3d_stateblock *stateblock,
@@ -1577,13 +1643,13 @@ void CDECL wined3d_stateblock_set_render_state(struct wined3d_stateblock *stateb
             }
             break;
 
-        case WINED3D_RS_SPECULARENABLE:
         case WINED3D_RS_TEXTUREFACTOR:
             stateblock->changed.ffp_ps_constants = 1;
             break;
 
         case WINED3D_RS_VERTEXBLEND:
             stateblock->changed.modelview_matrices = 1;
+            stateblock->changed.ffp_vs_settings = 1;
             break;
 
         case WINED3D_RS_POINTSCALEENABLE:
@@ -1591,6 +1657,39 @@ void CDECL wined3d_stateblock_set_render_state(struct wined3d_stateblock *stateb
         case WINED3D_RS_POINTSCALE_B:
         case WINED3D_RS_POINTSCALE_C:
             stateblock->changed.point_scale = 1;
+            break;
+
+        case WINED3D_RS_AMBIENTMATERIALSOURCE:
+        case WINED3D_RS_COLORVERTEX:
+        case WINED3D_RS_DIFFUSEMATERIALSOURCE:
+        case WINED3D_RS_EMISSIVEMATERIALSOURCE:
+        case WINED3D_RS_FOGENABLE:
+        case WINED3D_RS_FOGTABLEMODE:
+        case WINED3D_RS_FOGVERTEXMODE:
+        case WINED3D_RS_LIGHTING:
+        case WINED3D_RS_LOCALVIEWER:
+        case WINED3D_RS_NORMALIZENORMALS:
+        case WINED3D_RS_RANGEFOGENABLE:
+        case WINED3D_RS_SPECULARMATERIALSOURCE:
+            stateblock->changed.ffp_vs_settings = 1;
+            break;
+
+        case WINED3D_RS_COLORKEYENABLE:
+            stateblock->changed.ffp_ps_settings = 1;
+            break;
+
+        case WINED3D_RS_SPECULARENABLE:
+            stateblock->changed.ffp_vs_settings = 1;
+            stateblock->changed.ffp_ps_constants = 1;
+            break;
+
+        case WINED3D_RS_FILLMODE:
+        case WINED3D_RS_CULLMODE:
+        case WINED3D_RS_SLOPESCALEDEPTHBIAS:
+        case WINED3D_RS_DEPTHBIAS:
+        case WINED3D_RS_SCISSORTESTENABLE:
+        case WINED3D_RS_ANTIALIASEDLINEENABLE:
+            stateblock->changed.rasterizer_state = 1;
             break;
 
         default:
@@ -1643,8 +1742,23 @@ void CDECL wined3d_stateblock_set_texture_stage_state(struct wined3d_stateblock 
             break;
 
         case WINED3D_TSS_TEXCOORD_INDEX:
+            stateblock->changed.ffp_vs_settings = 1;
+            /* fall through */
         case WINED3D_TSS_TEXTURE_TRANSFORM_FLAGS:
             stateblock->changed.texture_matrices = 1;
+            stateblock->changed.ffp_ps_settings = 1;
+            break;
+
+        case WINED3D_TSS_ALPHA_ARG0:
+        case WINED3D_TSS_ALPHA_ARG1:
+        case WINED3D_TSS_ALPHA_ARG2:
+        case WINED3D_TSS_ALPHA_OP:
+        case WINED3D_TSS_COLOR_ARG0:
+        case WINED3D_TSS_COLOR_ARG1:
+        case WINED3D_TSS_COLOR_ARG2:
+        case WINED3D_TSS_COLOR_OP:
+        case WINED3D_TSS_RESULT_ARG:
+            stateblock->changed.ffp_ps_settings = 1;
             break;
 
         default:
@@ -1652,9 +1766,47 @@ void CDECL wined3d_stateblock_set_texture_stage_state(struct wined3d_stateblock 
     }
 }
 
+static bool texture_binding_might_invalidate_fs_settings(const struct wined3d_stateblock *stateblock,
+        const struct wined3d_texture *texture, const struct wined3d_texture *prev, unsigned int stage)
+{
+    const struct wined3d_d3d_info *d3d_info = &stateblock->device->adapter->d3d_info;
+    const struct wined3d_format *old_format, *new_format;
+    unsigned int old_usage, new_usage;
+
+    /* The source arguments for color and alpha ops have different meanings when
+     * a NULL texture is bound. */
+    if (!texture)
+        return !!prev;
+    if (!prev)
+        return true;
+
+    old_usage = prev->resource.usage;
+    new_usage = texture->resource.usage;
+    if (texture->resource.type != prev->resource.type
+            || ((old_usage & WINED3DUSAGE_LEGACY_CUBEMAP) != (new_usage & WINED3DUSAGE_LEGACY_CUBEMAP)))
+        return true;
+
+    if (!stage && stateblock->stateblock_state.rs[WINED3D_RS_COLORKEYENABLE]
+            && (texture->color_key_flags & WINED3D_CKEY_SRC_BLT))
+        return true;
+
+    old_format = prev->resource.format;
+    new_format = texture->resource.format;
+
+    if (is_same_fixup(old_format->color_fixup, new_format->color_fixup))
+        return false;
+
+    if (can_use_texture_swizzle(d3d_info, new_format) && can_use_texture_swizzle(d3d_info, old_format))
+        return false;
+
+    return true;
+}
+
 void CDECL wined3d_stateblock_set_texture(struct wined3d_stateblock *stateblock,
         UINT stage, struct wined3d_texture *texture)
 {
+    struct wined3d_texture *prev = stateblock->stateblock_state.textures[stage];
+
     TRACE("stateblock %p, stage %u, texture %p.\n", stateblock, stage, texture);
 
     if (stage >= ARRAY_SIZE(stateblock->stateblock_state.textures))
@@ -1665,10 +1817,13 @@ void CDECL wined3d_stateblock_set_texture(struct wined3d_stateblock *stateblock,
 
     if (texture)
         wined3d_texture_incref(texture);
-    if (stateblock->stateblock_state.textures[stage])
-        wined3d_texture_decref(stateblock->stateblock_state.textures[stage]);
+    if (prev)
+        wined3d_texture_decref(prev);
     stateblock->stateblock_state.textures[stage] = texture;
     stateblock->changed.textures |= 1u << stage;
+
+    if (texture_binding_might_invalidate_fs_settings(stateblock, texture, prev, stage))
+        stateblock->changed.ffp_ps_settings = 1;
 }
 
 void CDECL wined3d_stateblock_set_transform(struct wined3d_stateblock *stateblock,
@@ -1864,6 +2019,10 @@ HRESULT CDECL wined3d_stateblock_set_light(struct wined3d_stateblock *stateblock
             return WINED3DERR_INVALIDCALL;
     }
 
+    if (!(object = wined3d_light_state_get_light(stateblock->stateblock_state.light_state, light_idx))
+            || light->type != object->OriginalParms.type)
+        stateblock->changed.ffp_vs_settings = 1;
+
     if (SUCCEEDED(hr = wined3d_light_state_set_light(stateblock->stateblock_state.light_state, light_idx, light, &object)))
         set_light_changed(stateblock, object);
     return hr;
@@ -1887,6 +2046,7 @@ HRESULT CDECL wined3d_stateblock_set_light_enable(struct wined3d_stateblock *sta
     if (wined3d_light_state_enable_light(light_state, &stateblock->device->adapter->d3d_info, light_info, enable))
         set_light_changed(stateblock, light_info);
 
+    stateblock->changed.ffp_vs_settings = 1;
     return S_OK;
 }
 
@@ -2258,10 +2418,10 @@ static void wined3d_stateblock_state_init(struct wined3d_stateblock_state *state
 
 }
 
-/* FFP push constant buffers do not have a "default" state on the CS side.
- * We need to explicitly invalidate them when initializing the context or
- * resetting. */
-static void wined3d_stateblock_invalidate_push_constants(struct wined3d_stateblock *stateblock)
+/* Some states, e.g. FFP push constant buffers, do not have a "default" state
+ * on the CS side. We need to explicitly invalidate them when initializing the
+ * context or resetting. */
+static void wined3d_stateblock_invalidate_initial_states(struct wined3d_stateblock *stateblock)
 {
     stateblock->changed.ffp_ps_constants = 1;
     stateblock->changed.lights = 1;
@@ -2271,6 +2431,8 @@ static void wined3d_stateblock_invalidate_push_constants(struct wined3d_stateblo
     memset(stateblock->changed.transform, 0xff, sizeof(stateblock->changed.transform));
     stateblock->changed.modelview_matrices = 1;
     stateblock->changed.point_scale = 1;
+    stateblock->changed.ffp_vs_settings = 1;
+    stateblock->changed.ffp_ps_settings = 1;
 }
 
 static HRESULT stateblock_init(struct wined3d_stateblock *stateblock, const struct wined3d_stateblock *device_state,
@@ -2288,7 +2450,7 @@ static HRESULT stateblock_init(struct wined3d_stateblock *stateblock, const stru
     list_init(&stateblock->changed.changed_lights);
 
     if (type == WINED3D_SBT_PRIMARY)
-        wined3d_stateblock_invalidate_push_constants(stateblock);
+        wined3d_stateblock_invalidate_initial_states(stateblock);
 
     if (type == WINED3D_SBT_RECORDED || type == WINED3D_SBT_PRIMARY)
         return WINED3D_OK;
@@ -2365,7 +2527,7 @@ void CDECL wined3d_stateblock_reset(struct wined3d_stateblock *stateblock)
     memset(&stateblock->stateblock_state, 0, sizeof(stateblock->stateblock_state));
     stateblock->stateblock_state.light_state = &stateblock->light_state;
     wined3d_stateblock_state_init(&stateblock->stateblock_state, stateblock->device, WINED3D_STATE_INIT_DEFAULT);
-    wined3d_stateblock_invalidate_push_constants(stateblock);
+    wined3d_stateblock_invalidate_initial_states(stateblock);
 }
 
 static void wined3d_device_set_base_vertex_index(struct wined3d_device *device, int base_index)
@@ -2740,10 +2902,117 @@ static void sampler_desc_from_sampler_states(struct wined3d_sampler_desc *desc,
     }
 }
 
+void CDECL wined3d_stateblock_apply_clear_state(struct wined3d_stateblock *stateblock, struct wined3d_device *device)
+{
+    const struct wined3d_stateblock_state *state = &stateblock->stateblock_state;
+    struct wined3d_device_context *context = &device->cs->c;
+
+    /* Clear state depends on the viewport, scissor rect, and scissor enable. */
+
+    if (stateblock->changed.viewport)
+        wined3d_device_context_set_viewports(context, 1, &state->viewport);
+    if (stateblock->changed.scissorRect)
+        wined3d_device_context_set_scissor_rects(context, 1, &state->scissor_rect);
+
+    if (stateblock->changed.rasterizer_state)
+    {
+        struct wined3d_rasterizer_state *rasterizer_state;
+        struct wined3d_rasterizer_state_desc desc;
+        struct wine_rb_entry *entry;
+
+        memset(&desc, 0, sizeof(desc));
+        desc.fill_mode = state->rs[WINED3D_RS_FILLMODE];
+        desc.cull_mode = state->rs[WINED3D_RS_CULLMODE];
+        desc.depth_bias = int_to_float(state->rs[WINED3D_RS_DEPTHBIAS]);
+        desc.scale_bias = int_to_float(state->rs[WINED3D_RS_SLOPESCALEDEPTHBIAS]);
+        desc.depth_clip = TRUE;
+        desc.scissor = state->rs[WINED3D_RS_SCISSORTESTENABLE];
+        desc.line_antialias = state->rs[WINED3D_RS_ANTIALIASEDLINEENABLE];
+
+        if ((entry = wine_rb_get(&device->rasterizer_states, &desc)))
+        {
+            rasterizer_state = WINE_RB_ENTRY_VALUE(entry, struct wined3d_rasterizer_state, entry);
+            wined3d_device_context_set_rasterizer_state(context, rasterizer_state);
+        }
+        else if (SUCCEEDED(wined3d_rasterizer_state_create(device, &desc, NULL,
+                &wined3d_null_parent_ops, &rasterizer_state)))
+        {
+            wined3d_device_context_set_rasterizer_state(context, rasterizer_state);
+            if (wine_rb_put(&device->rasterizer_states, &desc, &rasterizer_state->entry) == -1)
+            {
+                ERR("Failed to insert rasterizer state.\n");
+                wined3d_rasterizer_state_decref(rasterizer_state);
+            }
+        }
+    }
+
+    if (wined3d_bitmap_is_set(stateblock->changed.renderState, WINED3D_RS_SRGBWRITEENABLE))
+        wined3d_device_set_render_state(device, WINED3D_RS_SRGBWRITEENABLE, state->rs[WINED3D_RS_SRGBWRITEENABLE]);
+}
+
+static struct wined3d_shader *get_ffp_vertex_shader(struct wined3d_device *device, const struct wined3d_state *state)
+{
+    static const struct wined3d_stream_info dummy_stream_info;
+    struct wined3d_ffp_vs_settings settings;
+    const struct wine_rb_entry *entry;
+    struct wined3d_ffp_vs *vs;
+
+    /* XXX: wined3d_ffp_get_vs_settings() only needs the stream info for the
+     * swizzle map, which the HLSL pipeline doesn't use (it will be computed and
+     * used later as part of struct vs_compile_args).
+     *
+     * This is nevertheless janky, and we'd like to get rid of it. Eventually
+     * once the HLSL backend is used everywhere, we can get rid of the swizzle
+     * map from wined3d_ffp_vs_settings. */
+    wined3d_ffp_get_vs_settings(state, &dummy_stream_info, &device->adapter->d3d_info, &settings);
+
+    if ((entry = wine_rb_get(&device->ffp_vertex_shaders, &settings)))
+        return WINE_RB_ENTRY_VALUE(entry, struct wined3d_ffp_vs, entry.entry)->shader;
+
+    if (!(vs = malloc(sizeof(*vs))))
+        return NULL;
+
+    vs->entry.settings = settings;
+    if (FAILED(wined3d_shader_create_ffp_vs(device, &settings, &vs->shader)))
+    {
+        free(vs);
+        return NULL;
+    }
+    if (wine_rb_put(&device->ffp_vertex_shaders, &vs->entry.settings, &vs->entry.entry) == -1)
+        ERR("Failed to insert FFP vertex shader.\n");
+
+    return vs->shader;
+}
+
+static struct wined3d_shader *get_ffp_pixel_shader(struct wined3d_device *device, const struct wined3d_state *state)
+{
+    struct ffp_frag_settings settings;
+    const struct ffp_frag_desc *desc;
+    struct wined3d_ffp_ps *ps;
+
+    wined3d_ffp_get_fs_settings(state, &device->adapter->d3d_info, &settings);
+
+    if ((desc = find_ffp_frag_shader(&device->ffp_pixel_shaders, &settings)))
+        return CONTAINING_RECORD(desc, struct wined3d_ffp_ps, entry)->shader;
+
+    if (!(ps = malloc(sizeof(*ps))))
+        return NULL;
+
+    ps->entry.settings = settings;
+    if (FAILED(wined3d_shader_create_ffp_ps(device, &settings, &ps->shader)))
+    {
+        free(ps);
+        return NULL;
+    }
+    add_ffp_frag_shader(&device->ffp_pixel_shaders, &ps->entry);
+
+    return ps->shader;
+}
+
 void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
         struct wined3d_stateblock *stateblock)
 {
-    bool set_blend_state = false, set_depth_stencil_state = false, set_rasterizer_state = false;
+    bool set_blend_state = false, set_depth_stencil_state = false;
 
     const struct wined3d_stateblock_state *state = &stateblock->stateblock_state;
     const unsigned int word_bit_count = sizeof(DWORD) * CHAR_BIT;
@@ -2755,6 +3024,8 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
     uint32_t map;
 
     TRACE("device %p, stateblock %p.\n", device, stateblock);
+
+    wined3d_stateblock_apply_clear_state(stateblock, device);
 
     if (changed->vertexShader)
     {
@@ -2864,15 +3135,6 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
                     set_depth_stencil_state = true;
                     break;
 
-                case WINED3D_RS_FILLMODE:
-                case WINED3D_RS_CULLMODE:
-                case WINED3D_RS_SLOPESCALEDEPTHBIAS:
-                case WINED3D_RS_DEPTHBIAS:
-                case WINED3D_RS_SCISSORTESTENABLE:
-                case WINED3D_RS_ANTIALIASEDLINEENABLE:
-                    set_rasterizer_state = true;
-                    break;
-
                 case WINED3D_RS_ADAPTIVETESS_X:
                 case WINED3D_RS_ADAPTIVETESS_Z:
                 case WINED3D_RS_ADAPTIVETESS_W:
@@ -2883,6 +3145,12 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
                     changed->lights = 1;
                     break;
 
+                case WINED3D_RS_FILLMODE:
+                case WINED3D_RS_CULLMODE:
+                case WINED3D_RS_SLOPESCALEDEPTHBIAS:
+                case WINED3D_RS_DEPTHBIAS:
+                case WINED3D_RS_SCISSORTESTENABLE:
+                case WINED3D_RS_ANTIALIASEDLINEENABLE:
                 case WINED3D_RS_ADAPTIVETESS_Y:
                 case WINED3D_RS_POINTSCALEENABLE:
                 case WINED3D_RS_POINTSCALE_A:
@@ -3089,45 +3357,6 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
                 default:
                     wined3d_device_set_render_state(device, idx, state->rs[idx]);
                     break;
-            }
-        }
-    }
-
-    if (set_rasterizer_state)
-    {
-        struct wined3d_rasterizer_state *rasterizer_state;
-        struct wined3d_rasterizer_state_desc desc;
-        struct wine_rb_entry *entry;
-        union
-        {
-            DWORD d;
-            float f;
-        } bias;
-
-        memset(&desc, 0, sizeof(desc));
-        desc.fill_mode = state->rs[WINED3D_RS_FILLMODE];
-        desc.cull_mode = state->rs[WINED3D_RS_CULLMODE];
-        bias.d = state->rs[WINED3D_RS_DEPTHBIAS];
-        desc.depth_bias = bias.f;
-        bias.d = state->rs[WINED3D_RS_SLOPESCALEDEPTHBIAS];
-        desc.scale_bias = bias.f;
-        desc.depth_clip = TRUE;
-        desc.scissor = state->rs[WINED3D_RS_SCISSORTESTENABLE];
-        desc.line_antialias = state->rs[WINED3D_RS_ANTIALIASEDLINEENABLE];
-
-        if ((entry = wine_rb_get(&device->rasterizer_states, &desc)))
-        {
-            rasterizer_state = WINE_RB_ENTRY_VALUE(entry, struct wined3d_rasterizer_state, entry);
-            wined3d_device_context_set_rasterizer_state(context, rasterizer_state);
-        }
-        else if (SUCCEEDED(wined3d_rasterizer_state_create(device, &desc, NULL,
-                &wined3d_null_parent_ops, &rasterizer_state)))
-        {
-            wined3d_device_context_set_rasterizer_state(context, rasterizer_state);
-            if (wine_rb_put(&device->rasterizer_states, &desc, &rasterizer_state->entry) == -1)
-            {
-                ERR("Failed to insert rasterizer state.\n");
-                wined3d_rasterizer_state_decref(rasterizer_state);
             }
         }
     }
@@ -3342,33 +3571,58 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
         }
     }
 
-    if (changed->transforms)
+    if (state->vertex_declaration && state->vertex_declaration->position_transformed)
     {
-        for (i = 0; i < ARRAY_SIZE(changed->transform); ++i)
+        /* We reuse the projection matrix to undo the translation between
+         * clip coordinates and pixel coordinates. */
+        if (changed->position_transformed || changed->viewport)
         {
-            map = changed->transform[i];
-            while (map)
+            float x = state->viewport.x;
+            float y = state->viewport.y;
+            float w = state->viewport.width;
+            float h = state->viewport.height;
+            float x_scale = 2.0f / w;
+            float x_offset = (-(2.0f * x) - w) / w;
+            float y_scale = 2.0f / -h;
+            float y_offset = (-(2.0f * y) - h) / -h;
+            bool depth = (state->rs[WINED3D_RS_ZENABLE] && context->state->fb.depth_stencil);
+            float z_scale = depth ? 1.0f : 0.0f;
+            const struct wined3d_matrix matrix =
             {
-                j = wined3d_bit_scan(&map);
-                idx = i * word_bit_count + j;
+                 x_scale,     0.0f,    0.0f, 0.0f,
+                    0.0f,  y_scale,    0.0f, 0.0f,
+                    0.0f,     0.0f, z_scale, 0.0f,
+                x_offset, y_offset,    0.0f, 1.0f,
+            };
 
-                if (idx == WINED3D_TS_VIEW)
-                {
-                    changed->lights = 1;
-                    changed->clipplane = wined3d_mask_from_size(WINED3D_MAX_CLIP_DISTANCES);
-                }
+            wined3d_device_context_push_constants(context, WINED3D_PUSH_CONSTANTS_VS_FFP, WINED3D_SHADER_CONST_FFP_PROJ,
+                    offsetof(struct wined3d_ffp_vs_constants, projection_matrix), sizeof(matrix), &matrix);
+        }
 
-                if (idx == WINED3D_TS_PROJECTION)
-                {
-                    wined3d_device_context_push_constants(context,
-                            WINED3D_PUSH_CONSTANTS_VS_FFP, WINED3D_SHADER_CONST_FFP_PROJ,
-                            offsetof(struct wined3d_ffp_vs_constants, projection_matrix),
-                            sizeof(state->transforms[idx]), &state->transforms[idx]);
-                    /* wined3d_ffp_vs_settings.ortho_fog still needs the
-                     * device state to be set. */
-                    wined3d_device_set_transform(device, idx, &state->transforms[idx]);
-                }
-            }
+        if (wined3d_bitmap_is_set(changed->transform, WINED3D_TS_PROJECTION))
+        {
+            /* wined3d_ffp_vs_settings.ortho_fog still needs the
+             * device state to be set. */
+            wined3d_device_set_transform(device, WINED3D_TS_PROJECTION, &state->transforms[WINED3D_TS_PROJECTION]);
+        }
+    }
+    else if (changed->transforms)
+    {
+        if (wined3d_bitmap_is_set(changed->transform, WINED3D_TS_VIEW))
+        {
+            changed->lights = 1;
+            changed->clipplane = wined3d_mask_from_size(WINED3D_MAX_CLIP_DISTANCES);
+        }
+
+        if (wined3d_bitmap_is_set(changed->transform, WINED3D_TS_PROJECTION) || changed->position_transformed)
+        {
+            wined3d_device_context_push_constants(context,
+                    WINED3D_PUSH_CONSTANTS_VS_FFP, WINED3D_SHADER_CONST_FFP_PROJ,
+                    offsetof(struct wined3d_ffp_vs_constants, projection_matrix),
+                    sizeof(state->transforms[WINED3D_TS_PROJECTION]), &state->transforms[WINED3D_TS_PROJECTION]);
+            /* wined3d_ffp_vs_settings.ortho_fog and vs_compile_args.ortho_fog
+             * still need the device state to be set. */
+            wined3d_device_set_transform(device, WINED3D_TS_PROJECTION, &state->transforms[WINED3D_TS_PROJECTION]);
         }
 
         /* Clip planes are affected by the view matrix. */
@@ -3380,10 +3634,6 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
     wined3d_device_set_base_vertex_index(device, state->base_vertex_index);
     if (changed->vertexDecl)
         wined3d_device_context_set_vertex_declaration(context, state->vertex_declaration);
-    if (changed->viewport)
-        wined3d_device_context_set_viewports(context, 1, &state->viewport);
-    if (changed->scissorRect)
-        wined3d_device_context_set_scissor_rects(context, 1, &state->scissor_rect);
 
     map = changed->streamSource | changed->streamFreq;
     while (map)
@@ -3572,14 +3822,9 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
     if (changed->texture_matrices)
     {
         struct wined3d_ffp_vs_constants constants;
-        struct wined3d_stream_info si;
-
-        /* FIXME: This is a bit fragile. Ideally we should be calculating
-         * stream info from the stateblock state. */
-        wined3d_stream_info_from_declaration(&si, context->state, &device->adapter->d3d_info);
 
         for (i = 0; i < WINED3D_MAX_FFP_TEXTURES; ++i)
-            get_texture_matrix(&si, state, i, &constants.texture_matrices[i]);
+            get_texture_matrix(state, i, &constants.texture_matrices[i]);
         wined3d_device_context_push_constants(context,
                 WINED3D_PUSH_CONSTANTS_VS_FFP, WINED3D_SHADER_CONST_FFP_TEXMATRIX,
                 offsetof(struct wined3d_ffp_vs_constants, texture_matrices),
@@ -3626,6 +3871,42 @@ void CDECL wined3d_device_apply_stateblock(struct wined3d_device *device,
                 WINED3D_SHADER_CONST_FFP_PS, 0, offsetof(struct wined3d_ffp_ps_constants, color_key), &constants);
     }
 
+    /* XXX: We don't invalidate HLSL shaders for every field contained in
+     * wined3d_ffp_vs_settings / ffp_frag_settings; only the ones that the HLSL
+     * FFP pipeline cares about. The rest should eventually be removed from
+     * those structs and left only in vs_compile_args / ps_compile_args. */
+
+    if (changed->ffp_vs_settings
+            && (!state->vs || !state->vertex_declaration || state->vertex_declaration->position_transformed))
+    {
+        if (device->adapter->d3d_info.ffp_hlsl)
+        {
+            struct wined3d_shader *shader = get_ffp_vertex_shader(device, device->cs->c.state);
+
+            wined3d_device_context_set_shader(context, WINED3D_SHADER_TYPE_VERTEX, shader);
+        }
+        else
+        {
+            /* Force invalidation of the vertex shader. */
+            wined3d_device_context_emit_set_shader(context, WINED3D_SHADER_TYPE_VERTEX, NULL);
+        }
+    }
+
+    if (changed->ffp_ps_settings && !state->ps)
+    {
+        if (device->adapter->d3d_info.ffp_hlsl)
+        {
+            struct wined3d_shader *shader = get_ffp_pixel_shader(device, device->cs->c.state);
+
+            wined3d_device_context_set_shader(context, WINED3D_SHADER_TYPE_PIXEL, shader);
+        }
+        else
+        {
+            /* Force invalidation of the pixel shader. */
+            wined3d_device_context_emit_set_shader(context, WINED3D_SHADER_TYPE_PIXEL, NULL);
+        }
+    }
+
     assert(list_empty(&stateblock->changed.changed_lights));
     memset(&stateblock->changed, 0, sizeof(stateblock->changed));
     list_init(&stateblock->changed.changed_lights);
@@ -3670,4 +3951,18 @@ void CDECL wined3d_stateblock_texture_changed(struct wined3d_stateblock *statebl
         if (stateblock->stateblock_state.textures[i] == texture)
             stateblock->changed.textures |= (1u << i);
     }
+}
+
+void CDECL wined3d_stateblock_depth_buffer_changed(struct wined3d_stateblock *stateblock)
+{
+    struct wined3d_vertex_declaration *decl = stateblock->stateblock_state.vertex_declaration;
+
+    /* The presence of a depth buffer affects depth clipping when drawing RHW.
+     * The depth buffer is not part of the stateblock, though, so we need a
+     * separate function to invalidate it.
+     * We pass this via the projection matrix, but use
+     * changed->position_transformed to invalidate it. */
+
+    if (decl && decl->position_transformed)
+        stateblock->changed.position_transformed = 1;
 }

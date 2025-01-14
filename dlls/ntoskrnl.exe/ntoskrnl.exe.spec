@@ -406,6 +406,7 @@
 @ stdcall IoGetDeviceInterfaces(ptr ptr long ptr)
 @ stdcall IoGetDeviceObjectPointer(ptr long ptr ptr)
 @ stdcall IoGetDeviceProperty(ptr long long ptr ptr)
+@ stdcall IoGetDevicePropertyData(ptr ptr long long long ptr ptr ptr)
 @ stub IoGetDeviceToVerify
 @ stub IoGetDiskDeviceObject
 @ stub IoGetDmaAdapter
@@ -464,8 +465,8 @@
 @ stub IoReportHalResourceUsage
 @ stdcall IoReportResourceForDetection(ptr ptr long ptr ptr long ptr)
 @ stdcall IoReportResourceUsage(ptr ptr ptr long ptr ptr long long ptr)
-@ stub IoReportTargetDeviceChange
-@ stub IoReportTargetDeviceChangeAsynchronous
+@ stdcall IoReportTargetDeviceChange(ptr ptr)
+@ stdcall IoReportTargetDeviceChangeAsynchronous(ptr ptr ptr ptr)
 @ stub IoRequestDeviceEject
 @ stdcall IoReuseIrp(ptr long)
 @ stub IoSetCompletionRoutineEx
@@ -879,7 +880,7 @@
 @ stub PoRegisterDeviceForIdleDetection
 @ stub PoRegisterDeviceNotify
 @ stub PoRegisterSystemState
-@ stub PoRequestPowerIrp
+@ stdcall PoRequestPowerIrp(ptr long long ptr ptr ptr)
 @ stub PoRequestShutdownEvent
 @ stub PoSetHiberRange
 @ stdcall PoSetPowerState(ptr long long)
@@ -1524,6 +1525,7 @@
 @ stdcall -private ZwSetInformationToken(long long ptr long) NtSetInformationToken
 @ stdcall -private ZwSetIntervalProfile(long long) NtSetIntervalProfile
 @ stdcall -private ZwSetIoCompletion(ptr long long long long) NtSetIoCompletion
+@ stdcall -private ZwSetIoCompletionEx(ptr ptr long long long long) NtSetIoCompletionEx
 @ stdcall -private ZwSetSecurityObject(long long ptr) NtSetSecurityObject
 @ stdcall -private ZwSetSystemInformation(long ptr long) NtSetSystemInformation
 @ stdcall -private ZwSetSystemTime(ptr ptr) NtSetSystemTime

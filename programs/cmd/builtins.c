@@ -86,6 +86,7 @@ const WCHAR inbuilt[][10] = {
         L"MORE",
         L"CHOICE",
         L"MKLINK",
+        L"",
         L"EXIT"
 };
 static const WCHAR externals[][10] = {
@@ -408,6 +409,7 @@ RETURN_CODE WCMD_choice(WCHAR *args)
             LARGE_INTEGER li, zeroli = {0};
             OVERLAPPED overlapped = {0};
             DWORD count;
+            char choice;
 
             overlapped.hEvent = CreateEventW(NULL, TRUE, FALSE, NULL);
             if (SetFilePointerEx(GetStdHandle(STD_INPUT_HANDLE), zeroli, &li, FILE_CURRENT))
@@ -415,11 +417,12 @@ RETURN_CODE WCMD_choice(WCHAR *args)
                 overlapped.Offset = li.LowPart;
                 overlapped.OffsetHigh = li.HighPart;
             }
-            if (ReadFile(GetStdHandle(STD_INPUT_HANDLE), answer, 1, NULL, &overlapped))
+            if (ReadFile(GetStdHandle(STD_INPUT_HANDLE), &choice, 1, NULL, &overlapped))
             {
                 switch (WaitForSingleObject(overlapped.hEvent, opt_timeout == -1 ? INFINITE : opt_timeout * 1000))
                 {
                 case WAIT_OBJECT_0:
+                    answer[0] = choice;
                     break;
                 case WAIT_TIMEOUT:
                     answer[0] = opt_default;
@@ -428,7 +431,7 @@ RETURN_CODE WCMD_choice(WCHAR *args)
                     return_code = ERROR_INVALID_FUNCTION;
                 }
             }
-            else if (ReadFile(GetStdHandle(STD_INPUT_HANDLE), answer, 1, &count, NULL))
+            else if (ReadFile(GetStdHandle(STD_INPUT_HANDLE), &choice, 1, &count, NULL))
             {
                 if (count == 0)
                 {
@@ -437,6 +440,8 @@ RETURN_CODE WCMD_choice(WCHAR *args)
                     else
                         return_code = ERROR_INVALID_FUNCTION;
                 }
+                else
+                    answer[0] = choice;
             }
             else
                 return_code = ERROR_INVALID_FUNCTION;
@@ -1060,8 +1065,20 @@ RETURN_CODE WCMD_copy(WCHAR * args)
           /* Do the copy as appropriate */
           if (overwrite) {
             if (anyconcats && WCMD_IsSameFile(srcpath, outname)) {
-              /* Silently skip if the destination file is also a source file */
-              status = TRUE;
+              /* behavior is as Unix 'touch' (change last-written time only) */
+              HANDLE file = CreateFileW(srcpath, GENERIC_WRITE, FILE_SHARE_WRITE, NULL,
+                                        OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+              if (file != INVALID_HANDLE_VALUE)
+              {
+                FILETIME file_time;
+                SYSTEMTIME system_time;
+
+                GetSystemTime(&system_time);
+                SystemTimeToFileTime(&system_time, &file_time);
+                status = SetFileTime(file, NULL, NULL, &file_time);
+                CloseHandle(file);
+              }
+              else status = FALSE;
             } else if (anyconcats && writtenoneconcat) {
               if (thiscopy->binarycopy) {
                 status = WCMD_ManualCopy(srcpath, outname, FALSE, TRUE);
@@ -1635,129 +1652,6 @@ void WCMD_add_dirstowalk(DIRECTORY_STACK *dirsToWalk)
     FindClose(hff);
 }
 
-/**************************************************************************
- * WCMD_for_nexttoken
- *
- * Parse the token= line, identifying the next highest number not processed
- * so far. Count how many tokens are referred (including duplicates) and
- * optionally return that, plus optionally indicate if the tokens= line
- * ends in a star.
- *
- * Parameters:
- *  lasttoken    [I]    - Identifies the token index of the last one
- *                           returned so far (-1 used for first loop)
- *  tokenstr     [I]    - The specified tokens= line
- *  firstCmd     [O]    - Optionally indicate how many tokens are listed
- *  doAll        [O]    - Optionally indicate if line ends with *
- *  duplicates   [O]    - Optionally indicate if there is any evidence of
- *                           overlaying tokens in the string
- * Note the caller should keep a running track of duplicates as the tokens
- * are recursively passed. If any have duplicates, then the * token should
- * not be honoured.
- */
-int WCMD_for_nexttoken(int lasttoken, const WCHAR *tokenstr,
-                       int *totalfound, BOOL *doall,
-                       BOOL *duplicates)
-{
-  const WCHAR *pos = tokenstr;
-  int    nexttoken = -1;
-
-  if (totalfound) *totalfound = 0;
-  if (doall) *doall = FALSE;
-  if (duplicates) *duplicates = FALSE;
-
-  WINE_TRACE("Find next token after %d in %s\n", lasttoken,
-             wine_dbgstr_w(tokenstr));
-
-  /* Loop through the token string, parsing it. Valid syntax is:
-     token=m or x-y with comma delimiter and optionally * to finish*/
-  while (*pos) {
-    int nextnumber1, nextnumber2 = -1;
-    WCHAR *nextchar;
-
-    /* Remember if the next character is a star, it indicates a need to
-       show all remaining tokens and should be the last character       */
-    if (*pos == '*') {
-      if (doall) *doall = TRUE;
-      if (totalfound) (*totalfound)++;
-      /* If we have not found a next token to return, then indicate
-         time to process the star                                   */
-      if (nexttoken == -1) {
-         if (lasttoken == -1) {
-           /* Special case the syntax of tokens=* which just means get whole line */
-           nexttoken = 0;
-         } else {
-           nexttoken = lasttoken;
-         }
-      }
-      break;
-    }
-
-    /* Get the next number */
-    nextnumber1 = wcstoul(pos, &nextchar, 10);
-
-    /* If it is followed by a minus, it's a range, so get the next one as well */
-    if (*nextchar == '-') {
-      nextnumber2 = wcstoul(nextchar+1, &nextchar, 10);
-
-      /* We want to return the lowest number that is higher than lasttoken
-         but only if range is positive                                     */
-      if (nextnumber2 >= nextnumber1 &&
-          lasttoken < nextnumber2) {
-
-        int nextvalue;
-        if (nexttoken == -1) {
-          nextvalue = max(nextnumber1, (lasttoken+1));
-        } else {
-          nextvalue = min(nexttoken, max(nextnumber1, (lasttoken+1)));
-        }
-
-        /* Flag if duplicates identified */
-        if (nexttoken == nextvalue && duplicates) *duplicates = TRUE;
-
-        nexttoken = nextvalue;
-      }
-
-      /* Update the running total for the whole range */
-      if (nextnumber2 >= nextnumber1 && totalfound) {
-        *totalfound = *totalfound + 1 + (nextnumber2 - nextnumber1);
-      }
-      pos = nextchar;
-
-    } else if (pos != nextchar) {
-      if (totalfound) (*totalfound)++;
-
-      /* See if the number found is one we have already seen */
-      if (nextnumber1 == nexttoken && duplicates) *duplicates = TRUE;
-
-      /* We want to return the lowest number that is higher than lasttoken */
-      if (lasttoken < nextnumber1 &&
-         ((nexttoken == -1) || (nextnumber1 < nexttoken))) {
-        nexttoken = nextnumber1;
-      }
-      pos = nextchar;
-
-    } else {
-      /* Step on to the next character, usually over comma */
-      if (*pos) pos++;
-    }
-
-  }
-
-  /* Return result */
-  if (nexttoken == -1) {
-    WINE_TRACE("No next token found, previous was %d\n", lasttoken);
-    nexttoken = lasttoken;
-  } else if (nexttoken==lasttoken && doall && *doall) {
-    WINE_TRACE("Request for all remaining tokens now\n");
-  } else {
-    WINE_TRACE("Found next token after %d was %d\n", lasttoken, nexttoken);
-  }
-  if (totalfound) WINE_TRACE("Found total tokens to be %d\n", *totalfound);
-  if (duplicates && *duplicates) WINE_TRACE("Duplicate numbers found\n");
-  return nexttoken;
-}
-
 static int find_in_array(const WCHAR array[][10], size_t sz, const WCHAR *what)
 {
     int i;
@@ -1793,7 +1687,7 @@ RETURN_CODE WCMD_give_help(WCHAR *args)
             WCHAR cmd[128];
             lstrcpyW(cmd, help_on);
             lstrcatW(cmd, L" /?");
-            WCMD_run_program(cmd, FALSE);
+            WCMD_run_builtin_command(WCMD_HELP, cmd);
         }
         else
         {
@@ -1877,14 +1771,8 @@ RETURN_CODE WCMD_pushd(const WCHAR *args)
       return errorlevel = ERROR_INVALID_FUNCTION;
     }
 
-    curdir  = LocalAlloc (LMEM_FIXED, sizeof (struct env_stack));
-    thisdir = LocalAlloc (LMEM_FIXED, 1024 * sizeof(WCHAR));
-    if( !curdir || !thisdir ) {
-      LocalFree(curdir);
-      LocalFree(thisdir);
-      WINE_ERR ("out of memory\n");
-      return errorlevel = ERROR_INVALID_FUNCTION;
-    }
+    curdir  = xalloc(sizeof(struct env_stack));
+    thisdir = xalloc(1024 * sizeof(WCHAR));
 
     /* Change directory using CD code with /D parameter */
     lstrcpyW(quals, L"/D");
@@ -1893,8 +1781,8 @@ RETURN_CODE WCMD_pushd(const WCHAR *args)
     return_code = WCMD_setshow_default(args);
     if (return_code != NO_ERROR)
     {
-      LocalFree(curdir);
-      LocalFree(thisdir);
+      free(curdir);
+      free(thisdir);
       return errorlevel = ERROR_INVALID_FUNCTION;
     } else {
       curdir -> next    = pushd_directories;
@@ -1926,8 +1814,8 @@ RETURN_CODE WCMD_popd(void)
     /* pop the old environment from the stack, and make it the current dir */
     pushd_directories = temp->next;
     SetCurrentDirectoryW(temp->strings);
-    LocalFree (temp->strings);
-    LocalFree (temp);
+    free(temp->strings);
+    free(temp);
     return NO_ERROR;
 }
 
@@ -2268,16 +2156,11 @@ static WCHAR *WCMD_dupenv( const WCHAR *env )
 
   len = 0;
   while ( env[len] )
-    len += (lstrlenW(&env[len]) + 1);
+    len += lstrlenW(&env[len]) + 1;
+  len++;
 
-  env_copy = LocalAlloc (LMEM_FIXED, (len+1) * sizeof (WCHAR) );
-  if (!env_copy)
-  {
-    WINE_ERR("out of memory\n");
-    return env_copy;
-  }
-  memcpy (env_copy, env, len*sizeof (WCHAR));
-  env_copy[len] = 0;
+  env_copy = xalloc(len * sizeof (WCHAR));
+  memcpy(env_copy, env, len*sizeof (WCHAR));
 
   return env_copy;
 }
@@ -2317,12 +2200,7 @@ RETURN_CODE WCMD_setlocal(WCHAR *args)
       TRACE("Setting delayed expansion to %d\n", newdelay);
   }
 
-  env_copy = LocalAlloc (LMEM_FIXED, sizeof (struct env_stack));
-  if( !env_copy )
-  {
-      ERR("out of memory\n");
-      return errorlevel = ERROR_OUTOFMEMORY;
-  }
+  env_copy = xalloc( sizeof(struct env_stack));
 
   env = GetEnvironmentStringsW ();
   env_copy->strings = WCMD_dupenv (env);
@@ -2339,7 +2217,7 @@ RETURN_CODE WCMD_setlocal(WCHAR *args)
     env_copy->u.cwd = cwd[0];
   }
   else
-    LocalFree (env_copy);
+    free(env_copy);
 
   FreeEnvironmentStringsW (env);
   return errorlevel = NO_ERROR;
@@ -2384,7 +2262,7 @@ RETURN_CODE WCMD_endlocal(void)
     }
     len += n;
   }
-  LocalFree (old);
+  free(old);
   FreeEnvironmentStringsW (env);
 
   /* restore old environment */
@@ -2415,8 +2293,8 @@ RETURN_CODE WCMD_endlocal(void)
     }
   }
 
-  LocalFree (env);
-  LocalFree (temp);
+  free(env);
+  free(temp);
   return NO_ERROR;
 }
 
@@ -2595,14 +2473,12 @@ static int WCMD_setshow_sortenv(const WCHAR *s, const WCHAR *stub)
 
   /* count the number of strings, and the total length */
   while ( s[len] ) {
-    len += (lstrlenW(&s[len]) + 1);
+    len += lstrlenW(&s[len]) + 1;
     count++;
   }
 
   /* add the strings to an array */
-  str = LocalAlloc (LMEM_FIXED | LMEM_ZEROINIT, count * sizeof (WCHAR*) );
-  if( !str )
-    return 0;
+  str = xalloc(count * sizeof (WCHAR*) );
   str[0] = s;
   for( i=1; i<count; i++ )
     str[i] = str[i-1] + lstrlenW(str[i-1]) + 1;
@@ -2624,7 +2500,7 @@ static int WCMD_setshow_sortenv(const WCHAR *s, const WCHAR *stub)
     }
   }
 
-  LocalFree( str );
+  free( str );
   return displayedcount;
 }
 
@@ -3149,14 +3025,14 @@ exprerrorreturn:
 RETURN_CODE WCMD_setshow_env(WCHAR *s)
 {
   RETURN_CODE return_code = NO_ERROR;
-  LPVOID env;
   WCHAR *p;
   BOOL status;
   WCHAR string[MAXSTRING];
 
-  if (param1[0] == 0x00 && quals[0] == 0x00) {
-    env = GetEnvironmentStringsW();
+  if (!*s) {
+    WCHAR *env = GetEnvironmentStringsW();
     WCMD_setshow_sortenv( env, NULL );
+    FreeEnvironmentStringsW(env);
   }
 
   /* See if /P supplied, and if so echo the prompt, and read in a reply */
@@ -3254,11 +3130,12 @@ RETURN_CODE WCMD_setshow_env(WCHAR *s)
 
     p = wcschr (s, '=');
     if (p == NULL) {
-      env = GetEnvironmentStringsW();
+      WCHAR *env = GetEnvironmentStringsW();
       if (WCMD_setshow_sortenv( env, s ) == 0) {
         WCMD_output_stderr(WCMD_LoadMessage(WCMD_MISSINGENV), s);
         return_code = ERROR_INVALID_FUNCTION;
       }
+      FreeEnvironmentStringsW(env);
     }
     else
     {
@@ -3274,7 +3151,8 @@ RETURN_CODE WCMD_setshow_env(WCHAR *s)
       } else if (!status) WCMD_print_error();
     }
   }
-  return errorlevel = return_code;
+  return WCMD_is_in_context(L".bat") && return_code == NO_ERROR ?
+      return_code : (errorlevel = return_code);
 }
 
 /****************************************************************************
@@ -3303,7 +3181,7 @@ RETURN_CODE WCMD_setshow_path(const WCHAR *args)
         return errorlevel = ERROR_INVALID_FUNCTION;
     }
   }
-  return errorlevel = NO_ERROR;
+  return WCMD_is_in_context(L".bat") ? NO_ERROR : (errorlevel = NO_ERROR);
 }
 
 /****************************************************************************
@@ -3328,7 +3206,7 @@ RETURN_CODE WCMD_setshow_prompt(void)
     }
     else SetEnvironmentVariableW(L"PROMPT", s);
   }
-  return errorlevel = NO_ERROR;
+  return WCMD_is_in_context(L".bat") ? NO_ERROR : (errorlevel = NO_ERROR);
 }
 
 /****************************************************************************
@@ -3877,16 +3755,17 @@ RETURN_CODE WCMD_exit(void)
  */
 RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
 {
-    HKEY    key;
-    DWORD   accessOptions = KEY_READ;
-    WCHAR   *newValue;
-    LONG    rc = ERROR_SUCCESS;
-    WCHAR    keyValue[MAXSTRING];
-    DWORD   valueLen;
-    HKEY    readKey;
+    RETURN_CODE return_code;
+    HKEY        key;
+    DWORD       accessOptions = KEY_READ;
+    WCHAR      *newValue;
+    LONG        rc = ERROR_SUCCESS;
+    WCHAR       keyValue[MAXSTRING];
+    DWORD       valueLen;
+    HKEY        readKey;
 
     /* See if parameter includes '=' */
-    errorlevel = NO_ERROR;
+    return_code = NO_ERROR;
     newValue = wcschr(args, '=');
     if (newValue) accessOptions |= KEY_WRITE;
 
@@ -3953,17 +3832,15 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
         lstrcpyW(subkey, keyValue);
         if (!assoc) lstrcatW(subkey, L"\\Shell\\Open\\Command");
 
-        if (RegOpenKeyExW(key, subkey, 0, accessOptions, &readKey) == ERROR_SUCCESS) {
-
-          valueLen = sizeof(keyValue);
-          rc = RegQueryValueExW(readKey, NULL, NULL, NULL, (LPBYTE)keyValue, &valueLen);
+        valueLen = sizeof(keyValue);
+        if (RegOpenKeyExW(key, subkey, 0, accessOptions, &readKey) == ERROR_SUCCESS &&
+            RegQueryValueExW(readKey, NULL, NULL, NULL, (LPBYTE)keyValue, &valueLen) == ERROR_SUCCESS) {
           WCMD_output_asis(args);
           WCMD_output_asis(L"=");
-          /* If no default value found, leave line empty after '=' */
-          if (rc == ERROR_SUCCESS) WCMD_output_asis(keyValue);
+          WCMD_output_asis(keyValue);
           WCMD_output_asis(L"\r\n");
           RegCloseKey(readKey);
-          errorlevel = rc == ERROR_SUCCESS ? NO_ERROR : ERROR_INVALID_FUNCTION;
+          return_code = NO_ERROR;
         } else {
           WCHAR  msgbuffer[MAXSTRING];
 
@@ -3974,7 +3851,7 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
             LoadStringW(hinst, WCMD_NOFTYPE, msgbuffer, ARRAY_SIZE(msgbuffer));
           }
           WCMD_output_stderr(msgbuffer, keyValue);
-          errorlevel = assoc ? ERROR_INVALID_FUNCTION : ERROR_FILE_NOT_FOUND;
+          return_code = assoc ? ERROR_INVALID_FUNCTION : ERROR_FILE_NOT_FOUND;
         }
 
       /* Not a query - it's a set or clear of a value */
@@ -3990,16 +3867,24 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
         lstrcpyW(subkey, args);
         if (!assoc) lstrcatW(subkey, L"\\Shell\\Open\\Command");
 
-        /* If nothing after '=' then clear value - only valid for ASSOC */
         if (*newValue == 0x00) {
 
-          if (assoc) rc = RegDeleteKeyW(key, args);
-          if (assoc && rc == ERROR_SUCCESS) {
+          if (assoc)
+            rc = RegDeleteKeyW(key, args);
+          else {
+            rc = RegCreateKeyExW(key, subkey, 0, NULL, REG_OPTION_NON_VOLATILE,
+                                accessOptions, NULL, &readKey, NULL);
+            if (rc == ERROR_SUCCESS) {
+              rc = RegDeleteValueW(readKey, NULL);
+              RegCloseKey(readKey);
+            }
+          }
+          if (rc == ERROR_SUCCESS) {
             WINE_TRACE("HKCR Key '%s' deleted\n", wine_dbgstr_w(args));
 
-          } else if (assoc && rc != ERROR_FILE_NOT_FOUND) {
+          } else if (rc != ERROR_FILE_NOT_FOUND) {
             WCMD_print_error();
-            errorlevel = ERROR_FILE_NOT_FOUND;
+            return_code = ERROR_FILE_NOT_FOUND;
 
           } else {
             WCHAR  msgbuffer[MAXSTRING];
@@ -4011,7 +3896,7 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
               LoadStringW(hinst, WCMD_NOFTYPE, msgbuffer, ARRAY_SIZE(msgbuffer));
             }
             WCMD_output_stderr(msgbuffer, args);
-            errorlevel = ERROR_FILE_NOT_FOUND;
+            return_code = ERROR_FILE_NOT_FOUND;
           }
 
         /* It really is a set value = contents */
@@ -4027,7 +3912,7 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
 
           if (rc != ERROR_SUCCESS) {
             WCMD_print_error();
-            errorlevel = ERROR_FILE_NOT_FOUND;
+            return_code = ERROR_FILE_NOT_FOUND;
           } else {
             WCMD_output_asis(args);
             WCMD_output_asis(L"=");
@@ -4040,8 +3925,8 @@ RETURN_CODE WCMD_assoc(const WCHAR *args, BOOL assoc)
 
     /* Clean up */
     RegCloseKey(key);
-
-    return errorlevel;
+    return WCMD_is_in_context(L".bat") && return_code == NO_ERROR ?
+        return_code : (errorlevel = return_code);
 }
 
 /****************************************************************************
@@ -4143,4 +4028,29 @@ RETURN_CODE WCMD_mklink(WCHAR *args)
 
     WCMD_output_stderr(WCMD_LoadMessage(WCMD_READFAIL), file1);
     return errorlevel = ERROR_INVALID_FUNCTION;
+}
+
+RETURN_CODE WCMD_change_drive(WCHAR drive)
+{
+    WCHAR envvar[4];
+    WCHAR dir[MAX_PATH];
+
+    /* According to MSDN CreateProcess docs, special env vars record
+     * the current directory on each drive, in the form =C:
+     * so see if one specified, and if so go back to it
+     */
+    envvar[0] = L'=';
+    envvar[1] = drive;
+    envvar[2] = L':';
+    envvar[3] = L'\0';
+
+    if (GetEnvironmentVariableW(envvar, dir, ARRAY_SIZE(dir)) == 0)
+        wcscpy(dir, envvar + 1);
+    WINE_TRACE("Got directory for %lc: as %s\n", drive, wine_dbgstr_w(dir));
+    if (!SetCurrentDirectoryW(dir))
+    {
+        WCMD_print_error();
+        return errorlevel = ERROR_INVALID_FUNCTION;
+    }
+    return NO_ERROR;
 }

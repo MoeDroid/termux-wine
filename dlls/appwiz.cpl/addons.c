@@ -56,10 +56,10 @@ WINE_DEFAULT_DEBUG_CHANNEL(appwizcpl);
 #define GECKO_SHA "???"
 #endif
 
-#define MONO_VERSION "9.2.0"
+#define MONO_VERSION "9.4.0"
 #if defined(__i386__) || defined(__x86_64__)
 #define MONO_ARCH "x86"
-#define MONO_SHA "fd5829244d92985b8a404745adddb58c3a9b0bbb6d54ca4c6eaf86ea466735f9"
+#define MONO_SHA "cf6173ae94b79e9de13d9a74cdb2560a886fc3d271f9489acb1cfdbd961cacb2"
 #else
 #define MONO_ARCH ""
 #define MONO_SHA "???"
@@ -609,7 +609,7 @@ static void append_url_params( WCHAR *url )
     len += MultiByteToWideChar(CP_ACP, 0, addon->version, -1, url+len, size/sizeof(WCHAR)-len)-1;
     lstrcpyW(url+len, L"&winev=");
     len += lstrlenW(L"&winev=");
-    MultiByteToWideChar(CP_ACP, 0, p_wine_get_version() ? p_wine_get_version() : 0, -1, url+len, size/sizeof(WCHAR)-len);
+    MultiByteToWideChar(CP_ACP, 0, p_wine_get_version ? p_wine_get_version() : 0, -1, url+len, size/sizeof(WCHAR)-len);
 }
 
 static LPWSTR get_url(void)

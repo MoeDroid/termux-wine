@@ -1858,7 +1858,7 @@ BOOL WINAPI ImmGetConversionStatus( HIMC himc, DWORD *conversion, DWORD *sentenc
  */
 HWND WINAPI ImmGetDefaultIMEWnd(HWND hWnd)
 {
-    return NtUserGetDefaultImeWindow(hWnd);
+    return NtUserQueryWindow( hWnd, WindowDefaultImeWindow );
 }
 
 /***********************************************************************
@@ -2637,6 +2637,7 @@ BOOL WINAPI ImmSetCompositionStringW(
 BOOL WINAPI ImmSetCompositionWindow( HIMC himc, COMPOSITIONFORM *composition )
 {
     INPUTCONTEXT *ctx;
+    RECT rect;
 
     TRACE( "himc %p, composition %s\n", himc, debugstr_composition( composition ) );
 
@@ -2648,6 +2649,14 @@ BOOL WINAPI ImmSetCompositionWindow( HIMC himc, COMPOSITIONFORM *composition )
 
     ImmNotifyIME( himc, NI_CONTEXTUPDATED, 0, IMC_SETCOMPOSITIONWINDOW );
     SendMessageW( ctx->hWnd, WM_IME_NOTIFY, IMN_SETCOMPOSITIONWINDOW, 0 );
+
+    if (composition->dwStyle & (CFS_RECT | CFS_POINT | CFS_FORCE_POSITION))
+    {
+        if (composition->dwStyle & CFS_RECT) rect = composition->rcArea;
+        else SetRect( &rect, composition->ptCurrentPos.x, composition->ptCurrentPos.y,
+                      composition->ptCurrentPos.x + 1, composition->ptCurrentPos.y + 1 );
+        NtUserCallTwoParam( (ULONG_PTR)ctx->hWnd, (ULONG_PTR)&rect, NtUserCallTwoParam_SetIMECompositionRect );
+    }
 
     ImmUnlockIMC( himc );
 

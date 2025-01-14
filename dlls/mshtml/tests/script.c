@@ -185,6 +185,7 @@ static const GUID CLSID_TestScript[] = {
 static const GUID CLSID_TestActiveX =
     {0x178fc163,0xf585,0x4e24,{0x9c,0x13,0x4b,0xb7,0xfa,0xf8,0x06,0x46}};
 
+static DWORD main_thread_id;
 static BOOL is_ie9plus, is_english;
 static IHTMLDocument2 *notif_doc;
 static IOleDocumentView *view;
@@ -4289,7 +4290,7 @@ static void report_data(ProtocolHandler *This)
     ok(hres == S_OK, "ReportData failed: %08lx\n", hres);
 
     hres = IInternetProtocolSink_ReportResult(This->sink, S_OK, 0, NULL);
-    ok(hres == S_OK, "ReportResult failed: %08lx\n", hres);
+    ok(hres == S_OK || broken(hres == 0x80ef0001), "ReportResult failed: %08lx\n", hres);
 }
 
 typedef struct js_stream_t {
@@ -4486,6 +4487,27 @@ static HRESULT WINAPI Protocol_Read(IInternetProtocolEx *iface, void *pv, ULONG 
     ProtocolHandler *This = impl_from_IInternetProtocolEx(iface);
     ULONG read;
     HRESULT hres;
+
+    if(GetCurrentThreadId() == main_thread_id) {
+        IHTMLDocument2 *doc_node;
+        DISPPARAMS dp = { 0 };
+        IHTMLWindow2 *window;
+        VARIANT v;
+
+        hres = IHTMLDocument2_get_parentWindow(notif_doc, &window);
+        ok(hres == S_OK, "get_parentWindow failed: %08lx\n", hres);
+
+        hres = IHTMLWindow2_get_document(window, &doc_node);
+        IHTMLWindow2_Release(window);
+        ok(hres == S_OK, "get_document failed: %08lx\n", hres);
+
+        V_VT(&v) = VT_EMPTY;
+        V_I4(&v) = 1234;
+        hres = IHTMLDocument2_Invoke(doc_node, DISPID_READYSTATE, &IID_NULL, 0, DISPATCH_PROPERTYGET, &dp, &v, NULL, NULL);
+        ok(hres == S_OK, "Invoke(DISPID_READYSTATE) failed: %08lx\n", hres);
+        ok(V_VT(&v) == VT_I4, "V_VT(v) = %d\n", V_VT(&v));
+        IHTMLDocument2_Release(doc_node);
+    }
 
     if(This->stream) {
         hres = IStream_Read(This->stream, pv, cb, &read);
@@ -5247,6 +5269,7 @@ START_TEST(script)
 
     argc = winetest_get_mainargs(&argv);
     CoInitialize(NULL);
+    main_thread_id = GetCurrentThreadId();
     container_hwnd = create_container_window();
 
     detect_locale();

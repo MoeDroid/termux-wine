@@ -3547,6 +3547,7 @@ static void test_thread_lookup(void)
 static void test_thread_ideal_processor(void)
 {
     ULONG number, len;
+    PROCESSOR_NUMBER processor;
     NTSTATUS status;
 
     number = 0;
@@ -3563,6 +3564,12 @@ static void test_thread_ideal_processor(void)
 
     status = pNtQueryInformationThread( GetCurrentThread(), ThreadIdealProcessor, &number, sizeof(number), &len );
     ok(status == STATUS_INVALID_INFO_CLASS, "Unexpected status %#lx.\n", status);
+
+    status = pNtQueryInformationThread( GetCurrentThread(), ThreadIdealProcessorEx, &processor, sizeof(processor) + 1, &len );
+    ok(status == STATUS_INFO_LENGTH_MISMATCH, "Unexpected status %#lx.\n", status);
+
+    status = pNtQueryInformationThread( GetCurrentThread(), ThreadIdealProcessorEx, &processor, sizeof(processor), &len );
+    ok(status == STATUS_SUCCESS, "Unexpected status %#lx.\n", status);
 }
 
 static void test_thread_info(void)
@@ -3723,6 +3730,22 @@ static void test_process_instrumentation_callback(void)
     ok( status == STATUS_SUCCESS || status == STATUS_INFO_LENGTH_MISMATCH
             || broken( status == STATUS_PRIVILEGE_NOT_HELD ) /* some versions and machines before Win10 */,
             "Got unexpected status %#lx.\n", status );
+
+    if (status)
+    {
+        win_skip( "NtSetInformationProcess failed, skipping further tests.\n" );
+        return;
+    }
+
+    status = NtSetInformationProcess( GetCurrentProcess(), ProcessInstrumentationCallback,
+                                      &info.Callback, sizeof(info.Callback) );
+    ok( status == STATUS_SUCCESS, "got %#lx.\n", status );
+    status = NtSetInformationProcess( GetCurrentProcess(), ProcessInstrumentationCallback,
+                                      &info.Callback, sizeof(info.Callback) + 4 );
+    ok( status == STATUS_SUCCESS, "got %#lx.\n", status );
+    status = NtSetInformationProcess( GetCurrentProcess(), ProcessInstrumentationCallback,
+                                      &info.Callback, sizeof(info.Callback) / 2 );
+    ok( status == STATUS_INFO_LENGTH_MISMATCH, "got %#lx.\n", status );
 }
 
 static void test_debuggee_dbgport(int argc, char **argv)

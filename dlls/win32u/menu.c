@@ -755,7 +755,7 @@ BOOL WINAPI NtUserEnableMenuItem( HMENU handle, UINT id, UINT flags )
         release_menu_ptr( parent_menu );
 
         /* Refresh the frame to reflect the change */
-        get_window_rects( hwnd, COORDS_CLIENT, &rc, NULL, get_thread_dpi() );
+        get_window_rect_rel( hwnd, COORDS_CLIENT, &rc, get_thread_dpi() );
         rc.bottom = 0;
         NtUserRedrawWindow( hwnd, &rc, 0, RDW_FRAME | RDW_INVALIDATE | RDW_NOCHILDREN );
     }
@@ -2882,7 +2882,7 @@ static void draw_popup_menu( HWND hwnd, HDC hdc, HMENU hmenu )
     }
 }
 
-LRESULT popup_menu_window_proc( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam )
+LRESULT popup_menu_window_proc( HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam, BOOL ansi )
 {
     TRACE( "hwnd=%p msg=0x%04x wp=0x%04lx lp=0x%08lx\n", hwnd, message, (long)wparam, lparam );
 
@@ -2938,7 +2938,7 @@ LRESULT popup_menu_window_proc( HWND hwnd, UINT message, WPARAM wparam, LPARAM l
         return get_window_long_ptr( hwnd, 0, FALSE );
 
     default:
-        return default_window_proc( hwnd, message, wparam, lparam, FALSE );
+        return default_window_proc( hwnd, message, wparam, lparam, ansi );
     }
     return 0;
 }
@@ -3046,10 +3046,9 @@ static BOOL show_popup( HWND owner, HMENU hmenu, UINT id, UINT flags,
                         int x, int y, INT xanchor, INT yanchor )
 {
     struct menu *menu;
-    HMONITOR monitor;
     MONITORINFO info;
     UINT max_height;
-    POINT pt;
+    RECT rect;
 
     TRACE( "owner=%p hmenu=%p id=0x%04x x=0x%04x y=0x%04x xa=0x%04x ya=0x%04x\n",
            owner, hmenu, id, x, y, xanchor, yanchor );
@@ -3064,11 +3063,8 @@ static BOOL show_popup( HWND owner, HMENU hmenu, UINT id, UINT flags,
     menu->nScrollPos = 0;
 
     /* FIXME: should use item rect */
-    pt.x = x;
-    pt.y = y;
-    monitor = monitor_from_point( pt, MONITOR_DEFAULTTONEAREST, get_thread_dpi() );
-    info.cbSize = sizeof(info);
-    get_monitor_info( monitor, &info, get_thread_dpi() );
+    SetRect( &rect, x, y, x, y );
+    info = monitor_info_from_rect( rect, get_thread_dpi() );
 
     max_height = info.rcWork.bottom - info.rcWork.top;
     if (menu->cyMax) max_height = min( max_height, menu->cyMax );

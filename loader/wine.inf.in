@@ -596,6 +596,8 @@ HKLM,Software\Microsoft\WBEM,"Installation Directory",2,"%11%\wbem"
 HKLM,Software\Microsoft\Windows Messaging Subsystem,"MAPI",2,"1"
 HKLM,Software\Policies,,16
 HKLM,Software\Registered Applications,,16
+HKLM,System\CurrentControlSet\Control\Filesystem,"NtfsDisable8dot3NameCreation",0x10003,0
+HKLM,System\CurrentControlSet\Control\Filesystem,"NtfsDisableLastAccessUpdate",0x10003,0x80000002
 HKLM,System\CurrentControlSet\Control\hivelist,,16
 HKLM,System\CurrentControlSet\Control\Lsa,"Security Packages",0x10002,kerberos,schannel
 HKLM,System\CurrentControlSet\Control\Lsa\Kerberos,,16
@@ -609,6 +611,9 @@ HKLM,System\CurrentControlSet\Control\TimeZoneInformation,"TimeZoneKeyName",2,""
 HKLM,System\CurrentControlSet\Control\VirtualDeviceDrivers,,16
 HKLM,System\CurrentControlSet\Control\VMM32Files,,16
 HKLM,System\Select,"Current",0x10003,1
+HKLM,System\Select,"Default",0x10003,1
+HKLM,System\Select,"Failed",0x10003,0
+HKLM,System\Select,"LastKnownGood",0x10003,1
 HKCU,AppEvents\Schemes\Apps\Explorer\Navigating\.Current,,,""
 HKCU,Software\Microsoft\Protected Storage System Provider,,16
 ; Some apps requires at least four subkeys of Active Setup\Installed Components
@@ -2103,15 +2108,24 @@ HKLM,%CurrentVersion%\Telephony\Country List\998,"SameAreaRule",,"G"
 11,,shell32.dll,1
 11,,quartz.dll,1
 
+11,,colorcnv.dll,1
 11,,cryptdlg.dll,1
 11,,cryptnet.dll,1
 11,,devenum.dll,1
+11,,l3codecx.ax,1
+11,,mfasfsrcsnk.dll,1
+11,,mfh264enc.dll,1
+11,,mfmp4srcsnk.dll,1
 11,,mp3dmod.dll,1
+11,,msauddecmft.dll,1
 11,,mscoree.dll,1
 11,,mshtml.dll,1
 11,,msisip.dll,1
+11,,msmpeg2vdec.dll,1
+11,,msvproc.dll,1
 11,,qcap.dll,1
 11,,qedit.dll,1
+11,,resampledmo.dll,1
 11,,urlmon.dll,1
 11,,windowscodecs.dll,1
 11,,winegstreamer.dll,1
@@ -2119,6 +2133,8 @@ HKLM,%CurrentVersion%\Telephony\Country List\998,"SameAreaRule",,"G"
 11,,winevulkan.dll,1
 55,,winprint.dll,1
 11,,wintrust.dll,1
+11,,wmadmod.dll,1
+11,,wmvdecod.dll,1
 11,,iexplore.exe,1
 
 ; 32bit-only fake dlls
@@ -2325,7 +2341,7 @@ Description="Device mounting service"
 DisplayName="Mount Manager"
 ServiceBinary="%12%\mountmgr.sys"
 ServiceType=1
-StartType=2
+StartType=0
 ErrorControl=1
 LoadOrderGroup="System Bus Extender"
 
@@ -2616,6 +2632,7 @@ services,"@%11%\ws2_32.dll,-4"
 [InfFiles]
 input.inf,"@%12%\hidclass.sys,-1"
 mouhid.inf,"@%12%\mouhid.sys,-1"
+winebth.inf,"@%12%\winebth.sys,-1"
 winebus.inf,"@%12%\winebus.sys,-1"
 winehid.inf,"@%12%\winehid.sys,-1"
 wineusb.inf,"@%12%\wineusb.sys,-1"

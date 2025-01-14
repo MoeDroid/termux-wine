@@ -5,7 +5,7 @@ msgstr ""
 "Project-Id-Version: Wine\n"
 "Report-Msgid-Bugs-To: https://bugs.winehq.org\n"
 "POT-Creation-Date: N/A\n"
-"PO-Revision-Date: 2024-02-17 17:00+0100\n"
+"PO-Revision-Date: 2024-12-23 17:30+0100\n"
 "Last-Translator: Floris Renaud <jkfloris@dds.nl>\n"
 "Language-Team: Dutch\n"
 "Language: nl\n"
@@ -166,15 +166,15 @@ msgid ""
 "install it for you.\n"
 "\n"
 "Note: it is recommended to use your distribution's packages instead. See <a "
-"href=\"https://wiki.winehq.org/Gecko\">https://wiki.winehq.org/Gecko</a> for "
-"details."
+"href=\"https://gitlab.winehq.org/wine/wine/-/wikis/Gecko\">https://gitlab."
+"winehq.org/wine/wine/-/wikis/Gecko</a> for details."
 msgstr ""
 "Wine kon geen Gecko-pakket vinden. Gecko is nodig voor programma's die HTML "
 "ingebed gebruiken. Wine kan het automatisch downloaden en installeren.\n"
 "\n"
 "Opmerking: Het wordt aanbevolen om de pakketten van de distributie te "
-"gebruiken. Lees de <a href=\"https://wiki.winehq.org/Gecko\">WineHQ Wiki</a> "
-"voor meer informatie."
+"gebruiken. Lees de <a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/"
+"Gecko\">WineHQ Wiki</a> voor meer informatie."
 
 #: dlls/appwiz.cpl/appwiz.rc:110 dlls/appwiz.cpl/appwiz.rc:125
 msgid "&Install"
@@ -234,19 +234,19 @@ msgid ""
 "it for you.\n"
 "\n"
 "Note: it is recommended to use your distribution's packages instead. See <a "
-"href=\"https://wiki.winehq.org/Mono\">https://wiki.winehq.org/Mono</a> for "
-"details."
+"href=\"https://gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono\">https://"
+"gitlab.winehq.org/wine/wine/-/wikis/Wine-Mono</a> for details."
 msgstr ""
 "Wine kon geen wine-mono-pakket vinden. Mono is nodig voor programma's die "
 "gebruik maken van .NET. Wine kan het automatisch downloaden en installeren.\n"
 "\n"
 "Opmerking: Het wordt aanbevolen om de pakketten van de distributie te "
-"gebruiken. Lees de <a href=\"https://wiki.winehq.org/Mono\">WineHQ Wiki</a> "
-"voor meer informatie."
+"gebruiken. Lees de <a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/"
+"Wine-Mono\">WineHQ Wiki</a> voor meer informatie."
 
 #: dlls/appwiz.cpl/appwiz.rc:31
 msgid "Add/Remove Programs"
-msgstr "Software"
+msgstr "Programma's"
 
 #: dlls/appwiz.cpl/appwiz.rc:32
 msgid ""
@@ -408,6 +408,7 @@ msgid "Properties for %s"
 msgstr "Eigenschappen voor %s"
 
 #: dlls/comctl32/comctl32.rc:73 dlls/comdlg32/comdlg32.rc:265
+#: dlls/desk.cpl/desk.rc:41
 msgid "&Apply"
 msgstr "&Toepassen"
 
@@ -3159,6 +3160,30 @@ msgstr "Selecteer een certificaat"
 msgid "Not yet implemented"
 msgstr "Nog niet geïmplementeerd"
 
+#: dlls/desk.cpl/desk.rc:35
+msgid "Desktop"
+msgstr "Schermen"
+
+#: dlls/desk.cpl/desk.rc:38
+msgid "Virtual Desktop"
+msgstr "Virtueel Bureaublad"
+
+#: dlls/desk.cpl/desk.rc:40 dlls/joy.cpl/joy.rc:41
+msgid "&Reset"
+msgstr "Te&rugzetten"
+
+#: dlls/desk.cpl/desk.rc:42
+msgid "Emulate display mode changes (requires restart)"
+msgstr "Wijzigen van de resolutie simuleren (herstart vereist)"
+
+#: dlls/desk.cpl/desk.rc:29
+msgid "Display Settings"
+msgstr "Beeldscherm Instellingen"
+
+#: dlls/desk.cpl/desk.rc:30
+msgid "Configure monitors and display devices."
+msgstr "Beeldschermen en grafische apparaten configureren."
+
 #: dlls/dinput/dinput.rc:34
 msgid "Configure Devices"
 msgstr "Configureer apparaten"
@@ -3692,7 +3717,7 @@ msgstr "Poort:"
 
 #: dlls/inetcpl.cpl/inetcpl.rc:31
 msgid "Internet Settings"
-msgstr "Internetinstellingen"
+msgstr "Internet Instellingen"
 
 #: dlls/inetcpl.cpl/inetcpl.rc:32
 msgid "Configure Wine Internet Browser and related settings"
@@ -3742,59 +3767,59 @@ msgstr "Joysticks"
 msgid "&Disable"
 msgstr "&Uitzetten"
 
-#: dlls/joy.cpl/joy.rc:41
-msgid "&Reset"
-msgstr "&Terugzetten"
-
 #: dlls/joy.cpl/joy.rc:42
-msgid "&Enable"
-msgstr "&Activeren"
-
-#: dlls/joy.cpl/joy.rc:43
 msgid "&Override"
 msgstr "&Overschrijven"
 
+#: dlls/joy.cpl/joy.rc:43
+msgid "&Enable"
+msgstr "&Activeren"
+
 #: dlls/joy.cpl/joy.rc:44
-msgid "Connected"
-msgstr "Verbonden"
+msgid "Connected (DirectInput devices)"
+msgstr "Verbonden (DirectInput apparaat)"
 
 #: dlls/joy.cpl/joy.rc:46
-msgid "Connected (xinput device)"
-msgstr "Verbonden (xinput apparaat)"
+msgid "Connected (XInput devices)"
+msgstr "Verbonden (XInput apparaat)"
 
 #: dlls/joy.cpl/joy.rc:48
 msgid "Disabled"
 msgstr "Uitgeschakeld"
 
-#: dlls/joy.cpl/joy.rc:50
-msgid ""
-"After disabling or enabling a device, the connected joysticks won't be "
-"updated here until you restart this applet."
-msgstr ""
-"Na het uit- of inschakelen van een apparaat zullen de aangesloten joysticks "
-"niet vernieuwd worden totdat dit programma herstart wordt."
+#: dlls/joy.cpl/joy.rc:51
+msgid "Advanced settings (restart prefix required to take effect)"
+msgstr "Geavanceerde instellingen (herstart prefix vereist)"
 
-#: dlls/joy.cpl/joy.rc:55
+#: dlls/joy.cpl/joy.rc:52
+msgid "Enable SDL"
+msgstr "SDL gebruiken"
+
+#: dlls/joy.cpl/joy.rc:53
+msgid "Disable hidraw"
+msgstr "Hidraw uitschakelen"
+
+#: dlls/joy.cpl/joy.rc:58
 msgid "DInput"
 msgstr "DInput"
 
-#: dlls/joy.cpl/joy.rc:59
+#: dlls/joy.cpl/joy.rc:62
 msgid "Axes"
 msgstr "Assen"
 
-#: dlls/joy.cpl/joy.rc:60
+#: dlls/joy.cpl/joy.rc:63
 msgid "POVs"
 msgstr "Gezichtsveld"
 
-#: dlls/joy.cpl/joy.rc:61
+#: dlls/joy.cpl/joy.rc:64
 msgid "Buttons"
 msgstr "Knoppen"
 
-#: dlls/joy.cpl/joy.rc:62
+#: dlls/joy.cpl/joy.rc:65
 msgid "Force Feedback Effect"
 msgstr "Force Feedback Effect"
 
-#: dlls/joy.cpl/joy.rc:64
+#: dlls/joy.cpl/joy.rc:67
 msgid ""
 "Press any button in the controller to activate the chosen effect. The effect "
 "direction can be changed with the controller axis."
@@ -3802,27 +3827,27 @@ msgstr ""
 "Druk op een knop op de controller om het gewenste effect te activeren. De "
 "richting van het effect kan veranderd worden met de assen van de controller."
 
-#: dlls/joy.cpl/joy.rc:70
+#: dlls/joy.cpl/joy.rc:73
 msgid "XInput"
 msgstr "XInput"
 
-#: dlls/joy.cpl/joy.rc:73
+#: dlls/joy.cpl/joy.rc:76
 msgid "User #0"
 msgstr "Gebruiker 0"
 
-#: dlls/joy.cpl/joy.rc:74
+#: dlls/joy.cpl/joy.rc:77
 msgid "User #1"
 msgstr "Gebruiker 1"
 
-#: dlls/joy.cpl/joy.rc:75
+#: dlls/joy.cpl/joy.rc:78
 msgid "User #2"
 msgstr "Gebruiker 2"
 
-#: dlls/joy.cpl/joy.rc:76
+#: dlls/joy.cpl/joy.rc:79
 msgid "User #3"
 msgstr "Gebruiker 3"
 
-#: dlls/joy.cpl/joy.rc:78
+#: dlls/joy.cpl/joy.rc:81
 msgid ""
 "No user detected on slot #0, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3830,7 +3855,7 @@ msgstr ""
 "Geen gebruiker gevonden op slot nr. 0. Zorg dat de gamepad is aangesloten en "
 "niet voor DInput is overschreven op het Joysticks-tabblad."
 
-#: dlls/joy.cpl/joy.rc:82
+#: dlls/joy.cpl/joy.rc:85
 msgid ""
 "No user detected on slot #1, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3838,7 +3863,7 @@ msgstr ""
 "Geen gebruiker gevonden op slot nr. 1. Zorg dat de gamepad is aangesloten en "
 "niet voor DInput is overschreven op het Joysticks-tabblad."
 
-#: dlls/joy.cpl/joy.rc:86
+#: dlls/joy.cpl/joy.rc:89
 msgid ""
 "No user detected on slot #2, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3846,7 +3871,7 @@ msgstr ""
 "Geen gebruiker gevonden op slot nr. 2. Zorg dat de gamepad is aangesloten en "
 "niet voor DInput is overschreven op het Joysticks-tabblad."
 
-#: dlls/joy.cpl/joy.rc:90
+#: dlls/joy.cpl/joy.rc:93
 msgid ""
 "No user detected on slot #3, make sure your gamepad is plugged in, and not "
 "overridden for DInput in the Joysticks tab."
@@ -3854,8 +3879,8 @@ msgstr ""
 "Geen gebruiker gevonden op slot nr. 3. Zorg dat de gamepad is aangesloten en "
 "niet voor DInput is overschreven op het Joysticks-tabblad."
 
-#: dlls/joy.cpl/joy.rc:95 dlls/joy.cpl/joy.rc:96 dlls/joy.cpl/joy.rc:97
-#: dlls/joy.cpl/joy.rc:98
+#: dlls/joy.cpl/joy.rc:98 dlls/joy.cpl/joy.rc:99 dlls/joy.cpl/joy.rc:100
+#: dlls/joy.cpl/joy.rc:101
 msgid "Rumble"
 msgstr "Trillen"
 
@@ -3903,167 +3928,171 @@ msgstr "Dit object ondersteunt deze actie niet"
 msgid "Argument not optional"
 msgstr "Argument is niet optioneel"
 
-#: dlls/jscript/jscript.rc:37
+#: dlls/jscript/jscript.rc:37 dlls/vbscript/vbscript.rc:56
+msgid "Object not a collection"
+msgstr "Dit object is geen collectie"
+
+#: dlls/jscript/jscript.rc:38
 msgid "Syntax error"
 msgstr "Formuleringsfout"
 
-#: dlls/jscript/jscript.rc:38
+#: dlls/jscript/jscript.rc:39
 msgid "Expected ';'"
 msgstr "';' verwacht"
 
-#: dlls/jscript/jscript.rc:39
+#: dlls/jscript/jscript.rc:40
 msgid "Expected '('"
 msgstr "'(' verwacht"
 
-#: dlls/jscript/jscript.rc:40
+#: dlls/jscript/jscript.rc:41
 msgid "Expected ')'"
 msgstr "')' verwacht"
 
-#: dlls/jscript/jscript.rc:41
+#: dlls/jscript/jscript.rc:42
 msgid "Expected identifier"
 msgstr "Verwachte ID"
 
-#: dlls/jscript/jscript.rc:42
+#: dlls/jscript/jscript.rc:43
 msgid "Expected '='"
 msgstr "Verwacht '='"
 
-#: dlls/jscript/jscript.rc:43
+#: dlls/jscript/jscript.rc:44
 msgid "Invalid character"
 msgstr "Ongeldig teken"
 
-#: dlls/jscript/jscript.rc:44
+#: dlls/jscript/jscript.rc:45
 msgid "Unterminated string constant"
 msgstr "Onafgesloten tekenreeksconstante"
 
-#: dlls/jscript/jscript.rc:45
+#: dlls/jscript/jscript.rc:46
 msgid "'return' statement outside of function"
 msgstr "'return' verklaring buiten functie"
 
-#: dlls/jscript/jscript.rc:46
+#: dlls/jscript/jscript.rc:47
 msgid "Can't have 'break' outside of loop"
 msgstr "'break' kan zich niet buiten loop bevinden"
 
-#: dlls/jscript/jscript.rc:47
+#: dlls/jscript/jscript.rc:48
 msgid "Can't have 'continue' outside of loop"
 msgstr "'continue' kan zich niet buiten loop bevinden"
 
-#: dlls/jscript/jscript.rc:48
+#: dlls/jscript/jscript.rc:49
 msgid "Label redefined"
 msgstr "Label hergedefinieerd"
 
-#: dlls/jscript/jscript.rc:49
+#: dlls/jscript/jscript.rc:50
 msgid "Label not found"
 msgstr "Label niet gevonden"
 
-#: dlls/jscript/jscript.rc:50
+#: dlls/jscript/jscript.rc:51
 msgid "Expected '@end'"
 msgstr "Verwacht '@end'"
 
-#: dlls/jscript/jscript.rc:51
+#: dlls/jscript/jscript.rc:52
 msgid "Conditional compilation is turned off"
 msgstr "Conditionele compilatie is uitgeschakeld"
 
-#: dlls/jscript/jscript.rc:52
+#: dlls/jscript/jscript.rc:53
 msgid "Expected '@'"
 msgstr "Verwacht '@'"
 
-#: dlls/jscript/jscript.rc:89
+#: dlls/jscript/jscript.rc:90
 msgid "Microsoft JScript compilation error"
 msgstr "Microsoft JScript compilatie fout"
 
-#: dlls/jscript/jscript.rc:90
+#: dlls/jscript/jscript.rc:91
 msgid "Microsoft JScript runtime error"
 msgstr "Microsoft JScript runtime-fout"
 
-#: dlls/jscript/jscript.rc:91 dlls/vbscript/vbscript.rc:64
+#: dlls/jscript/jscript.rc:92 dlls/vbscript/vbscript.rc:64
 msgid "Unknown runtime error"
 msgstr "Onbekende runtime-fout"
 
-#: dlls/jscript/jscript.rc:55
+#: dlls/jscript/jscript.rc:56
 msgid "Number expected"
 msgstr "Getal verwacht"
 
-#: dlls/jscript/jscript.rc:53
+#: dlls/jscript/jscript.rc:54
 msgid "Function expected"
 msgstr "Functie verwacht"
 
-#: dlls/jscript/jscript.rc:54
+#: dlls/jscript/jscript.rc:55
 msgid "'[object]' is not a date object"
 msgstr "'[object]' is geen datum object"
 
-#: dlls/jscript/jscript.rc:56
+#: dlls/jscript/jscript.rc:57
 msgid "Object expected"
 msgstr "Object verwacht"
 
-#: dlls/jscript/jscript.rc:57
+#: dlls/jscript/jscript.rc:58
 msgid "Illegal assignment"
 msgstr "Ongeldige toekenning"
 
-#: dlls/jscript/jscript.rc:58
+#: dlls/jscript/jscript.rc:59
 msgid "'|' is undefined"
 msgstr "'|' is ongedefinieerd"
 
-#: dlls/jscript/jscript.rc:59
+#: dlls/jscript/jscript.rc:60
 msgid "Boolean object expected"
 msgstr "Boolean object verwacht"
 
-#: dlls/jscript/jscript.rc:60
+#: dlls/jscript/jscript.rc:61
 msgid "Cannot delete '|'"
 msgstr "Kan '|' niet verwijderen"
 
-#: dlls/jscript/jscript.rc:61
+#: dlls/jscript/jscript.rc:62
 msgid "VBArray object expected"
 msgstr "VBArray object verwacht"
 
-#: dlls/jscript/jscript.rc:62
+#: dlls/jscript/jscript.rc:63
 msgid "JScript object expected"
 msgstr "JScript object verwacht"
 
-#: dlls/jscript/jscript.rc:63
+#: dlls/jscript/jscript.rc:64
 msgid "Enumerator object expected"
 msgstr "Enumerator-object verwacht"
 
-#: dlls/jscript/jscript.rc:64
+#: dlls/jscript/jscript.rc:65
 msgid "Regular Expression object expected"
 msgstr "Reguliere Expressie-object verwacht"
 
-#: dlls/jscript/jscript.rc:65
+#: dlls/jscript/jscript.rc:66
 msgid "Syntax error in regular expression"
 msgstr "Formuleringsfout in reguliere expressie"
 
-#: dlls/jscript/jscript.rc:66
+#: dlls/jscript/jscript.rc:67
 msgid "Unexpected quantifier"
 msgstr "Onverwachte kwantor"
 
-#: dlls/jscript/jscript.rc:67
+#: dlls/jscript/jscript.rc:68
 msgid "Exception thrown and not caught"
 msgstr "Uitzondering geactiveerd maar niet afgehandeld"
 
-#: dlls/jscript/jscript.rc:69
+#: dlls/jscript/jscript.rc:70
 msgid "URI to be encoded contains invalid characters"
 msgstr "De te coderen URI bevat ongeldige tekens"
 
-#: dlls/jscript/jscript.rc:68
+#: dlls/jscript/jscript.rc:69
 msgid "URI to be decoded is incorrect"
 msgstr "De te decoderen URI is niet correct"
 
-#: dlls/jscript/jscript.rc:70
+#: dlls/jscript/jscript.rc:71
 msgid "Number of fraction digits is out of range"
 msgstr "Aantal getallen achter de komma buiten bereik"
 
-#: dlls/jscript/jscript.rc:71
+#: dlls/jscript/jscript.rc:72
 msgid "Precision is out of range"
 msgstr "Precisie is buiten bereik"
 
-#: dlls/jscript/jscript.rc:72
+#: dlls/jscript/jscript.rc:73
 msgid "Array length must be a finite positive integer"
 msgstr "Array lengte moet een eindig, positief geheel getal zijn"
 
-#: dlls/jscript/jscript.rc:73
+#: dlls/jscript/jscript.rc:74
 msgid "Array object expected"
 msgstr "Array object verwacht"
 
-#: dlls/jscript/jscript.rc:74
+#: dlls/jscript/jscript.rc:75
 msgid ""
 "'writable' attribute on the property descriptor cannot be set to 'true' on "
 "this object"
@@ -4071,56 +4100,56 @@ msgstr ""
 "'writable' kenmerk van de eigenschapsdescriptor kan niet op 'true' worden "
 "ingesteld voor dit object"
 
-#: dlls/jscript/jscript.rc:75
+#: dlls/jscript/jscript.rc:76
 msgid "Cyclic __proto__ value"
 msgstr "Cyclische __proto__ waarde"
 
-#: dlls/jscript/jscript.rc:76
+#: dlls/jscript/jscript.rc:77
 msgid "Cannot create property for a non-extensible object"
 msgstr "Kan geen eigenschap maken voor een niet-uitbreidbaar object"
 
-#: dlls/jscript/jscript.rc:77
+#: dlls/jscript/jscript.rc:78
 msgid "Cannot define property '|': object is not extensible"
 msgstr "Kan de eigenschap '|' niet definiëren: object is niet uitbreidbaar"
 
-#: dlls/jscript/jscript.rc:78
+#: dlls/jscript/jscript.rc:79
 msgid "Cannot redefine non-configurable property '|'"
 msgstr "Kan onconfigureerbare eigenschap '|' niet herdefiniëren"
 
-#: dlls/jscript/jscript.rc:79
+#: dlls/jscript/jscript.rc:80
 msgid "Cannot modify non-writable property '|'"
 msgstr "Kan onschrijfbare eigenschap '|' niet veranderen"
 
-#: dlls/jscript/jscript.rc:80
+#: dlls/jscript/jscript.rc:81
 msgid "'this' is not a DataView object"
 msgstr "'this' is geen DataView object"
 
-#: dlls/jscript/jscript.rc:81
+#: dlls/jscript/jscript.rc:82
 msgid "Required argument offset or value in DataView method is not specified"
 msgstr ""
 "Vereiste argument offset of waarde in DataView methode is niet opgegeven"
 
-#: dlls/jscript/jscript.rc:82
+#: dlls/jscript/jscript.rc:83
 msgid "DataView operation access beyond specified buffer length"
 msgstr "DataView bewerkingstoegang buiten opgegeven bufferlengte"
 
-#: dlls/jscript/jscript.rc:83
+#: dlls/jscript/jscript.rc:84
 msgid "DataView constructor argument offset is invalid"
 msgstr "Ongeldige offset van het DataView constructor argument"
 
-#: dlls/jscript/jscript.rc:84
+#: dlls/jscript/jscript.rc:85
 msgid "'this' is not a | object"
 msgstr "'this' is geen | object"
 
-#: dlls/jscript/jscript.rc:85
+#: dlls/jscript/jscript.rc:86
 msgid "'key' is not an object"
 msgstr "'key' is geen object"
 
-#: dlls/jscript/jscript.rc:86
+#: dlls/jscript/jscript.rc:87
 msgid "ArrayBuffer object expected"
 msgstr "ArrayBuffer object verwacht"
 
-#: dlls/jscript/jscript.rc:87
+#: dlls/jscript/jscript.rc:88
 msgid "Property cannot have both accessors and a value"
 msgstr "Eigenschap kan niet zowel accessors als een waarde hebben"
 
@@ -10161,7 +10190,7 @@ msgstr "Configuratiescherm"
 
 #: dlls/shell32/shell32.rc:162
 msgid "Ne&w"
-msgstr ""
+msgstr "Nieu&w"
 
 #: dlls/shell32/shell32.rc:164
 msgid "E&xplore"
@@ -10169,7 +10198,7 @@ msgstr "&Verkennen"
 
 #: dlls/shell32/shell32.rc:167
 msgid "Run as &Administrator"
-msgstr ""
+msgstr "Als &Administrator uitvoeren"
 
 #: dlls/shell32/shell32.rc:189
 msgid "Restart"
@@ -12598,10 +12627,6 @@ msgstr "Kan benoemd argument niet vinden"
 msgid "Wrong number of arguments or invalid property assignment"
 msgstr "Onjuist aantal argumenten of ongeldige eigenschappentoewijzing"
 
-#: dlls/vbscript/vbscript.rc:56
-msgid "Object not a collection"
-msgstr "Dit object is geen collectie"
-
 #: dlls/vbscript/vbscript.rc:57
 msgid "Specified DLL function not found"
 msgstr "Kan opgegeven DLL-functie niet vinden"
@@ -14623,22 +14648,16 @@ msgstr ""
 " hexadecimaal (0x34) of octaal (056) zijn.\n"
 
 #: programs/cmd/cmd.rc:407
-#, fuzzy
-#| msgid "Syntax error\n"
 msgid "Syntax error: unexpected %1\n"
-msgstr "Formuleringsfout\n"
+msgstr "Formuleringsfout: %1 onverwacht\n"
 
 #: programs/cmd/cmd.rc:408
-#, fuzzy
-#| msgid "End of file.\n"
 msgid "End of line"
-msgstr "Einde van bestand.\n"
+msgstr "Einde van regel"
 
 #: programs/cmd/cmd.rc:409
-#, fuzzy
-#| msgid "End of file.\n"
 msgid "End of file"
-msgstr "Einde van bestand.\n"
+msgstr "Einde van bestand"
 
 #: programs/conhost/conhost.rc:54
 msgid "Cursor size"
@@ -14826,6 +14845,10 @@ msgstr ""
 "Alle programma's en het virtuele bureaublad worden afgesloten.\n"
 "Doorgaan?"
 
+#: programs/explorer/explorer.rc:38
+msgid "Wine Desktop"
+msgstr "Wine Bureaublad"
+
 #: programs/findstr/findstr.rc:28
 msgid "Usage: findstr /options string\n"
 msgstr "Gebruik: findstr /opties string\n"
@@ -14992,6 +15015,10 @@ msgstr "KerbTicket Encryptie Type"
 #: programs/klist/klist.rc:37
 msgid "Current LogonId is"
 msgstr "Huidige LoginId is"
+
+#: programs/klist/klist.rc:38
+msgid "Client"
+msgstr "Cliënt"
 
 #: programs/msinfo32/msinfo32.rc:28
 msgid "System Information"
@@ -19057,14 +19084,14 @@ msgstr "Programmafout details"
 msgid ""
 "If this problem is not present under Windows and has not been reported yet, "
 "you can save the detailed information to a file using the \"Save As\" "
-"button, then <a href=\"https://wiki.winehq.org/Bugs\">file a bug report</a> "
-"and attach that file to the report."
+"button, then <a href=\"https://gitlab.winehq.org/wine/wine/-/wikis/"
+"Bugs\">file a bug report</a> and attach that file to the report."
 msgstr ""
 "Als dit probleem zich niet voordoet onder Windows en het probleem nog niet "
 "is gerapporteerd, dan kan gedetailleerde informatie in een bestand worden "
 "opgeslagen met de \"Opslaan als\" knop. Maak een nieuwe <a href=\"https://"
-"wiki.winehq.org/Bugs\">foutrapportage</a> aan en voeg het bestand toe aan de "
-"foutrapportage."
+"gitlab.winehq.org/wine/wine/-/wikis/Bugs\">foutrapportage</a> aan en voeg "
+"het bestand toe aan de foutrapportage."
 
 #: programs/winedbg/winedbg.rc:40
 msgid ""
@@ -19460,10 +19487,8 @@ msgid "Help topics: "
 msgstr "Help-onderwerpen: "
 
 #: programs/wmic/wmic.rc:28
-#, fuzzy
-#| msgid "Error: Command line not supported\n"
 msgid "Error: Command not supported\n"
-msgstr "Fout: Opdrachtregel niet ondersteund\n"
+msgstr "Fout: Opdracht niet ondersteund\n"
 
 #: programs/wmic/wmic.rc:29
 msgid "Error: Alias not found\n"
@@ -19478,10 +19503,8 @@ msgid "Error: Invalid syntax for PATH\n"
 msgstr "Fout: Foutieve formulering voor PATH\n"
 
 #: programs/wmic/wmic.rc:32
-#, fuzzy
-#| msgid "Bad command.\n"
 msgid "Supply a command\n"
-msgstr "Verkeerd commando.\n"
+msgstr "Geef een opdracht\n"
 
 #: programs/wordpad/wordpad.rc:31
 msgid "&New...\tCtrl+N"

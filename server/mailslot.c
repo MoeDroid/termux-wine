@@ -271,10 +271,8 @@ static const struct fd_ops mailslot_device_fd_ops =
 
 static struct mailslot_message *get_first_message( struct mailslot *mailslot )
 {
-    if (list_empty( &mailslot->messages ))
-        return NULL;
-
-    return LIST_ENTRY( list_head( &mailslot->messages ), struct mailslot_message, entry );
+    struct list *ptr = list_head( &mailslot->messages );
+    return ptr ? LIST_ENTRY( ptr, struct mailslot_message, entry ) : NULL;
 }
 
 static void mailslot_destroy( struct object *obj)
@@ -559,7 +557,7 @@ static struct mailslot *create_mailslot( struct object *root,
 {
     struct mailslot *mailslot;
 
-    if (!(mailslot = create_named_object( root, &mailslot_ops, name, attr, sd ))) return NULL;
+    if (!(mailslot = create_named_object( root, &mailslot_ops, name, attr & ~OBJ_OPENIF, sd ))) return NULL;
 
     mailslot->fd = NULL;
     mailslot->max_msgsize = max_msgsize;

@@ -2677,10 +2677,9 @@ BOOL WINAPI CreateProcessWithLogonW( LPCWSTR lpUsername, LPCWSTR lpDomain, LPCWS
     LPCWSTR lpApplicationName, LPWSTR lpCommandLine, DWORD dwCreationFlags, LPVOID lpEnvironment,
     LPCWSTR lpCurrentDirectory, LPSTARTUPINFOW lpStartupInfo, LPPROCESS_INFORMATION lpProcessInformation )
 {
-    FIXME("%s %s %s 0x%08lx %s %s 0x%08lx %p %s %p %p stub\n", debugstr_w(lpUsername), debugstr_w(lpDomain),
-    debugstr_w(lpPassword), dwLogonFlags, debugstr_w(lpApplicationName),
-    debugstr_w(lpCommandLine), dwCreationFlags, lpEnvironment, debugstr_w(lpCurrentDirectory),
-    lpStartupInfo, lpProcessInformation);
+    FIXME("%s %s %p 0x%08lx %s %s 0x%08lx %p %s %p %p stub\n", debugstr_w(lpUsername), debugstr_w(lpDomain),
+          lpPassword, dwLogonFlags, debugstr_w(lpApplicationName), debugstr_w(lpCommandLine), dwCreationFlags,
+          lpEnvironment, debugstr_w(lpCurrentDirectory), lpStartupInfo, lpProcessInformation);
 
     return FALSE;
 }
@@ -2695,8 +2694,8 @@ BOOL WINAPI CreateProcessWithTokenW(HANDLE token, DWORD logon_flags, LPCWSTR app
           startup_info, process_information);
 
     /* FIXME: check if handles should be inherited */
-    return CreateProcessW( application_name, command_line, NULL, NULL, FALSE, creation_flags, environment,
-                           current_directory, startup_info, process_information );
+    return CreateProcessAsUserW( token, application_name, command_line, NULL, NULL, FALSE, creation_flags,
+                                 environment, current_directory, startup_info, process_information );
 }
 
 /******************************************************************************

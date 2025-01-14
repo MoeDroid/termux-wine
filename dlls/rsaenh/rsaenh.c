@@ -2763,7 +2763,7 @@ BOOL WINAPI RSAENH_CPDecrypt(HCRYPTPROV hProv, HCRYPTKEY hKey, HCRYPTHASH hHash,
         return FALSE;
     }
 
-    if (!*pdwDataLen)
+    if (Final && !*pdwDataLen)
     {
         SetLastError(NTE_BAD_LEN);
         return FALSE;
@@ -3645,6 +3645,10 @@ BOOL WINAPI RSAENH_CPGenKey(HCRYPTPROV hProv, ALG_ID Algid, DWORD dwFlags, HCRYP
                     case CALG_TLS1_MASTER:
                         pCryptKey->abKeyValue[0] = RSAENH_TLS1_VERSION_MAJOR;
                         pCryptKey->abKeyValue[1] = RSAENH_TLS1_VERSION_MINOR;
+                        break;
+                    case CALG_RC4:
+                        if (!(dwFlags & CRYPT_CREATE_SALT))
+                            memset(pCryptKey->abKeyValue + pCryptKey->dwKeyLen, 0, pCryptKey->dwSaltLen);
                         break;
                 }
                 setup_key(pCryptKey);

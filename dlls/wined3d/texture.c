@@ -340,12 +340,12 @@ static void texture2d_blt_fbo(struct wined3d_device *device, struct wined3d_cont
         struct wined3d_texture *dst_texture, unsigned int dst_sub_resource_idx, DWORD dst_location,
         const RECT *dst_rect, const struct wined3d_format *resolve_format)
 {
-    struct wined3d_texture *required_texture, *restore_texture = NULL, *dst_save_texture = dst_texture;
+    struct wined3d_texture *required_texture, *restore_texture, *dst_save_texture = dst_texture;
     unsigned int restore_idx, dst_save_sub_resource_idx = dst_sub_resource_idx;
+    bool resolve, scaled_resolve, restore_context = false;
     struct wined3d_texture *src_staging_texture = NULL;
     const struct wined3d_gl_info *gl_info;
     struct wined3d_context_gl *context_gl;
-    bool resolve, scaled_resolve;
     GLenum gl_filter;
     GLenum buffer;
     RECT s, d;
@@ -490,16 +490,17 @@ static void texture2d_blt_fbo(struct wined3d_device *device, struct wined3d_cont
     restore_texture = context->current_rt.texture;
     restore_idx = context->current_rt.sub_resource_idx;
     if (restore_texture != required_texture)
+    {
         context = context_acquire(device, required_texture, 0);
-    else
-        restore_texture = NULL;
+        restore_context = true;
+    }
 
     context_gl = wined3d_context_gl(context);
     if (!context_gl->valid)
     {
         context_release(context);
         WARN("Invalid context, skipping blit.\n");
-        restore_texture = NULL;
+        restore_context = false;
         goto done;
     }
 
@@ -565,7 +566,7 @@ done:
     if (src_staging_texture)
         wined3d_texture_decref(src_staging_texture);
 
-    if (restore_texture)
+    if (restore_context)
         context_restore(context, restore_texture, restore_idx);
 }
 
@@ -1284,8 +1285,8 @@ void wined3d_gl_texture_swizzle_from_color_fixup(GLint swizzle[4], struct color_
 }
 
 /* Context activation is done by the caller. */
-GLuint wined3d_texture_gl_prepare_gl_texture(struct wined3d_texture_gl *texture_gl,
-         struct wined3d_context_gl *context_gl, BOOL srgb)
+void wined3d_texture_gl_bind(struct wined3d_texture_gl *texture_gl,
+        struct wined3d_context_gl *context_gl, BOOL srgb)
 {
     const struct wined3d_format *format = texture_gl->t.resource.format;
     const struct wined3d_gl_info *gl_info = context_gl->gl_info;
@@ -1308,7 +1309,10 @@ GLuint wined3d_texture_gl_prepare_gl_texture(struct wined3d_texture_gl *texture_
     target = texture_gl->target;
 
     if (gl_tex->name)
-        return gl_tex->name;
+    {
+        wined3d_context_gl_bind_texture(context_gl, target, gl_tex->name);
+        return;
+    }
 
     gl_info->gl_ops.gl.p_glGenTextures(1, &gl_tex->name);
     checkGLcall("glGenTextures");
@@ -1317,7 +1321,7 @@ GLuint wined3d_texture_gl_prepare_gl_texture(struct wined3d_texture_gl *texture_
     if (!gl_tex->name)
     {
         ERR("Failed to generate a texture name.\n");
-        return 0;
+        return;
     }
 
     /* Initialise the state of the texture object to the OpenGL defaults, not
@@ -1395,8 +1399,6 @@ GLuint wined3d_texture_gl_prepare_gl_texture(struct wined3d_texture_gl *texture_
         gl_info->gl_ops.gl.p_glTexParameteriv(target, GL_TEXTURE_SWIZZLE_RGBA, swizzle);
         checkGLcall("set format swizzle");
     }
-
-    return gl_tex->name;
 }
 
 /* Context activation is done by the caller. */
@@ -1409,13 +1411,6 @@ void wined3d_texture_gl_bind_and_dirtify(struct wined3d_texture_gl *texture_gl,
     context_invalidate_state(&context_gl->c, STATE_GRAPHICS_SHADER_RESOURCE_BINDING);
 
     wined3d_texture_gl_bind(texture_gl, context_gl, srgb);
-}
-
-void wined3d_texture_gl_bind(struct wined3d_texture_gl *texture_gl,
-        struct wined3d_context_gl *context_gl, BOOL srgb)
-{
-    wined3d_context_gl_bind_texture(context_gl, texture_gl->target,
-            wined3d_texture_gl_prepare_gl_texture(texture_gl, context_gl, srgb));
 }
 
 /* Context activation is done by the caller (state handler). */

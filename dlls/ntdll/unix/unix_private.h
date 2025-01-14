@@ -106,6 +106,7 @@ struct ntdll_thread_data
     int                request_fd;    /* fd for sending server requests */
     int                reply_fd;      /* fd for receiving server replies */
     int                wait_fd[2];    /* fd for sleeping server requests */
+    BOOL               allow_writes;  /* ThreadAllowWrites flags */
     pthread_t          pthread_id;    /* pthread thread id */
     struct list        entry;         /* entry in TEB list */
     PRTL_THREAD_START_ROUTINE start;  /* thread entry point */
@@ -190,11 +191,11 @@ extern void init_environment(void);
 extern void init_startup_info(void);
 extern void *create_startup_info( const UNICODE_STRING *nt_image, ULONG process_flags,
                                   const RTL_USER_PROCESS_PARAMETERS *params,
-                                  const pe_image_info_t *pe_info, DWORD *info_size );
+                                  const struct pe_image_info *pe_info, DWORD *info_size );
 extern char **build_envp( const WCHAR *envW );
 extern char *get_alternate_wineloader( WORD machine );
-extern NTSTATUS exec_wineloader( char **argv, int socketfd, const pe_image_info_t *pe_info );
-extern NTSTATUS load_builtin( const pe_image_info_t *image_info, WCHAR *filename, USHORT machine,
+extern NTSTATUS exec_wineloader( char **argv, int socketfd, const struct pe_image_info *pe_info );
+extern NTSTATUS load_builtin( const struct pe_image_info *image_info, WCHAR *filename, USHORT machine,
                               SECTION_IMAGE_INFORMATION *info, void **module, SIZE_T *size,
                               ULONG_PTR limit_low, ULONG_PTR limit_high );
 extern BOOL is_builtin_path( const UNICODE_STRING *path, WORD *machine );
@@ -207,12 +208,12 @@ extern void start_server( BOOL debug );
 extern unsigned int server_call_unlocked( void *req_ptr );
 extern void server_enter_uninterrupted_section( pthread_mutex_t *mutex, sigset_t *sigset );
 extern void server_leave_uninterrupted_section( pthread_mutex_t *mutex, sigset_t *sigset );
-extern unsigned int server_select( const select_op_t *select_op, data_size_t size, UINT flags,
-                                   timeout_t abs_timeout, context_t *context, user_apc_t *user_apc );
-extern unsigned int server_wait( const select_op_t *select_op, data_size_t size, UINT flags,
+extern unsigned int server_select( const union select_op *select_op, data_size_t size, UINT flags,
+                                   timeout_t abs_timeout, struct context_data *context, struct user_apc *user_apc );
+extern unsigned int server_wait( const union select_op *select_op, data_size_t size, UINT flags,
                                  const LARGE_INTEGER *timeout );
-extern unsigned int server_queue_process_apc( HANDLE process, const apc_call_t *call,
-                                              apc_result_t *result );
+extern unsigned int server_queue_process_apc( HANDLE process, const union apc_call *call,
+                                              union apc_result *result );
 extern int server_get_unix_fd( HANDLE handle, unsigned int wanted_access, int *unix_fd,
                                int *needs_close, enum server_fd_type *type, unsigned int *options );
 extern void wine_server_send_fd( int fd );
@@ -247,6 +248,8 @@ static inline UINT64 xstate_extended_features(void)
     return xstate_supported_features_mask & ~(UINT64)3;
 }
 
+extern void set_process_instrumentation_callback( void *callback );
+
 extern void *get_cpu_area( USHORT machine );
 extern void set_thread_id( TEB *teb, DWORD pid, DWORD tid );
 extern NTSTATUS init_thread_stack( TEB *teb, ULONG_PTR limit, SIZE_T reserve_size, SIZE_T commit_size );
@@ -273,7 +276,7 @@ extern NTSTATUS virtual_map_module( HANDLE mapping, void **module, SIZE_T *size,
                                     SECTION_IMAGE_INFORMATION *info, ULONG_PTR limit_low,
                                     ULONG_PTR limit_high, USHORT machine );
 extern NTSTATUS virtual_create_builtin_view( void *module, const UNICODE_STRING *nt_name,
-                                             pe_image_info_t *info, void *so_handle );
+                                             struct pe_image_info *info, void *so_handle );
 extern NTSTATUS virtual_relocate_module( void *module );
 extern TEB *virtual_alloc_first_teb(void);
 extern NTSTATUS virtual_alloc_teb( TEB **ret_teb );
@@ -282,7 +285,7 @@ extern NTSTATUS virtual_clear_tls_index( ULONG index );
 extern NTSTATUS virtual_alloc_thread_stack( INITIAL_TEB *stack, ULONG_PTR limit_low, ULONG_PTR limit_high,
                                             SIZE_T reserve_size, SIZE_T commit_size, BOOL guard_page );
 extern void virtual_map_user_shared_data(void);
-extern NTSTATUS virtual_handle_fault( void *addr, DWORD err, void *stack );
+extern NTSTATUS virtual_handle_fault( EXCEPTION_RECORD *rec, void *stack );
 extern unsigned int virtual_locked_server_call( void *req_ptr );
 extern ssize_t virtual_locked_read( int fd, void *addr, size_t size );
 extern ssize_t virtual_locked_pread( int fd, void *addr, size_t size, off_t offset );
@@ -294,8 +297,9 @@ extern BOOL virtual_check_buffer_for_write( void *ptr, SIZE_T size );
 extern SIZE_T virtual_uninterrupted_read_memory( const void *addr, void *buffer, SIZE_T size );
 extern NTSTATUS virtual_uninterrupted_write_memory( void *addr, const void *buffer, SIZE_T size );
 extern void virtual_set_force_exec( BOOL enable );
+extern void virtual_enable_write_exceptions( BOOL enable );
 extern void virtual_set_large_address_space(void);
-extern void virtual_fill_image_information( const pe_image_info_t *pe_info,
+extern void virtual_fill_image_information( const struct pe_image_info *pe_info,
                                             SECTION_IMAGE_INFORMATION *info );
 extern void *get_builtin_so_handle( void *module );
 extern NTSTATUS load_builtin_unixlib( void *module, const char *name );
@@ -432,10 +436,10 @@ static inline void mutex_unlock( pthread_mutex_t *mutex )
     if (!process_exiting) pthread_mutex_unlock( mutex );
 }
 
-static inline async_data_t server_async( HANDLE handle, struct async_fileio *user, HANDLE event,
-                                         PIO_APC_ROUTINE apc, void *apc_context, client_ptr_t iosb )
+static inline struct async_data server_async( HANDLE handle, struct async_fileio *user, HANDLE event,
+                                              PIO_APC_ROUTINE apc, void *apc_context, client_ptr_t iosb )
 {
-    async_data_t async;
+    struct async_data async;
     async.handle      = wine_server_obj_handle( handle );
     async.user        = wine_server_client_ptr( user );
     async.iosb        = iosb;
